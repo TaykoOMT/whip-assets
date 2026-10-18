@@ -1,6 +1,6 @@
 // Cache hors ligne : on sert la version en cache tout de suite
 // et on la met à jour en arrière-plan.
-const CACHE = 'muscu-v3';
+const CACHE = 'muscu-v4';
 const FILES = [
   './',
   'index.html',

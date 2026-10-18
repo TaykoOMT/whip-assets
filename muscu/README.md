@@ -25,6 +25,8 @@ et garde tes données **sur ton téléphone** (rien n'est envoyé sur internet).
   volume, records battus, comparaison avec la fois précédente et charges conseillées pour la
   prochaine fois.
 - **Records** : 🏆 quand tu dépasses ta charge max sur un exercice.
+- **Badges** (onglet Progrès) : 23 défis à débloquer (séances, records, tonnes soulevées,
+  semaines d'affilée…), avec leur progression, et une célébration quand tu en gagnes un.
 - **Historique** : toutes tes séances, jour par jour, avec le tonnage soulevé.
 - **Progrès** : courbe de la charge max par séance, record, 1RM estimé.
 - **Réglages** : pas des boutons (0,5 / 1 / 1,25 / 2,5 / 5 kg), renommer / supprimer des

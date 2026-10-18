@@ -193,7 +193,8 @@
     transform: translateX(-50%) translateY(20px); opacity: 0;
     background: var(--text); color: var(--bg); font-weight: 600;
     padding: 10px 18px; border-radius: 999px; pointer-events: none;
-    transition: opacity .2s, transform .2s; z-index: 20; white-space: nowrap;
+    transition: opacity .2s, transform .2s; z-index: 20;
+    width: max-content; max-width: calc(100% - 32px); text-align: center;
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
@@ -269,6 +270,23 @@
   .arrow.up { color: #1f9d55; }
   .arrow.down { color: var(--danger); }
   .card ul { margin: 6px 0 0; padding-left: 20px; }
+
+  /* Badges */
+  .badges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .badge-tile {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 10px 6px; text-align: center; min-width: 0;
+  }
+  .badge-tile.ok { border-color: color-mix(in srgb, var(--gold) 60%, var(--border)); }
+  .badge-tile .bi { font-size: 30px; line-height: 1.2; filter: grayscale(1); opacity: .35; }
+  .badge-tile.ok .bi { filter: none; opacity: 1; }
+  .badge-tile .bn { font-weight: 700; font-size: 13px; line-height: 1.2; margin-top: 4px; }
+  .badge-tile .bd { font-size: 11px; line-height: 1.25; color: var(--muted); margin-top: 2px; }
+  .badge-tile .bp { font-size: 11px; font-weight: 600; color: var(--muted); margin-top: 4px; }
+  .badge-tile .bp.ok { color: var(--gold); }
+  .badge-tile .bar { height: 4px; background: var(--surface-2); border-radius: 999px; margin-top: 6px; overflow: hidden; }
+  .badge-tile .bar > div { height: 100%; background: var(--accent); }
+  .badge-icons { font-size: 22px; letter-spacing: 2px; white-space: nowrap; overflow: hidden; }
   .card li { margin: 4px 0; }
 </style>
 </head>
@@ -379,6 +397,7 @@ function migrate(d) {
     }));
   }
   if (!Array.isArray(d.runs)) d.runs = [];
+  if (!d.badges || typeof d.badges !== 'object') d.badges = {};
   if (d.active && (Date.now() - d.active.start > 12 * 3600e3 || !d.programs.some(p => p.id === d.active.progId))) d.active = null;
   d.v = 2;
   return d;
@@ -502,18 +521,108 @@ const lastSessionBefore = (exId, t) => {
 };
 
 let toastTimer;
-function toast(msg) {
+function toast(msg, ms) {
   const el = $('#toast');
   el.textContent = msg;
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
+  toastTimer = setTimeout(() => el.classList.remove('show'), ms || 1800);
+}
+
+// ---------- Badges ----------
+// [id, icône, nom, description, statistique suivie, objectif]
+const BADGES = [
+  ['first', '🎉', 'Premier pas', 'Ta première séance', 'sessions', 1],
+  ['s5', '🔥', 'Lancé', '5 séances', 'sessions', 5],
+  ['s10', '💪', 'Régulier', '10 séances', 'sessions', 10],
+  ['s25', '🏋️', 'Habitué', '25 séances', 'sessions', 25],
+  ['s50', '🦾', 'Acharné', '50 séances', 'sessions', 50],
+  ['s100', '👑', 'Légende', '100 séances', 'sessions', 100],
+  ['prog1', '✅', 'Programme bouclé', 'Terminer une séance de programme', 'runs', 1],
+  ['abc', '🔤', 'Tour complet', 'Terminer 3 programmes différents', 'progsDone', 3],
+  ['runs25', '🎯', 'Discipliné', '25 séances de programme terminées', 'runs', 25],
+  ['pr1', '🏆', 'Premier record', 'Battre un record de charge', 'prs', 1],
+  ['pr10', '🥇', 'Chasseur de records', '10 records battus', 'prs', 10],
+  ['pr50', '💎', 'Machine à records', '50 records battus', 'prs', 50],
+  ['t1', '🧱', '1 tonne', '1 000 kg soulevés au total', 'vol', 1000],
+  ['t10', '🚛', '10 tonnes', '10 000 kg soulevés au total', 'vol', 10000],
+  ['t100', '🏗️', '100 tonnes', '100 000 kg soulevés au total', 'vol', 100000],
+  ['day5t', '⚡', 'Grosse journée', '5 000 kg en une journée', 'dayVol', 5000],
+  ['sets20', '🔁', 'Endurant', '20 séries en une journée', 'daySets', 20],
+  ['w4', '📅', 'Un mois sans lâcher', '4 semaines d’affilée', 'streak', 4],
+  ['w12', '🗓️', 'Trois mois de suite', '12 semaines d’affilée', 'streak', 12],
+  ['hold60', '🧘', 'Gainage d’acier', 'Tenir 60 s sur un exercice chronométré', 'maxHold', 60],
+  ['rep20', '🔟', 'Increvable', '20 répétitions dans une série', 'maxReps', 20],
+  ['early', '🌅', 'Lève-tôt', 'S’entraîner avant 8 h', 'early', 1],
+  ['night', '🌙', 'Oiseau de nuit', 'S’entraîner après 22 h', 'night', 1]
+].map(([id, icon, name, desc, key, goal]) => ({ id, icon, name, desc, key, goal }));
+
+// Lundi de la semaine d'une date (pour compter les semaines d'affilée)
+function weekKey(t) {
+  const d = new Date(t);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - (d.getDay() + 6) % 7);
+  return d.getTime();
+}
+
+function computeStats() {
+  const sets = [...db.sets].sort((a, b) => a.t - b.t);
+  const days = new Map(), best = new Map();
+  const st = { vol: 0, prs: 0, maxHold: 0, maxReps: 0, early: 0, night: 0 };
+  for (const s of sets) {
+    const k = kindOf(s.exId);
+    const v = k === 'reps' ? s.w * s.r : 0;
+    st.vol += v;
+    const day = days.get(dayKey(s.t)) || { n: 0, vol: 0 };
+    day.n++; day.vol += v;
+    days.set(dayKey(s.t), day);
+    if (k === 'reps') {
+      st.maxReps = Math.max(st.maxReps, s.r);
+      if (best.has(s.exId) && s.w > best.get(s.exId)) st.prs++;
+      best.set(s.exId, Math.max(best.has(s.exId) ? best.get(s.exId) : 0, s.w));
+    } else if (k === 's') st.maxHold = Math.max(st.maxHold, s.r);
+    const h = new Date(s.t).getHours();
+    if (h >= 4 && h < 8) st.early = 1;
+    if (h >= 22 || h < 4) st.night = 1;
+  }
+  const weeks = [...new Set(sets.map(s => weekKey(s.t)))].sort((a, b) => a - b);
+  let run = 0, prev = null;
+  st.streak = 0;
+  for (const w of weeks) {
+    run = prev !== null && Math.round((w - prev) / 6048e5) === 1 ? run + 1 : 1;
+    st.streak = Math.max(st.streak, run);
+    prev = w;
+  }
+  // Série en cours : compte encore si la dernière séance date de cette semaine ou de la précédente
+  st.curStreak = prev !== null && Math.round((weekKey(Date.now()) - prev) / 6048e5) <= 1 ? run : 0;
+  const dayVals = [...days.values()];
+  st.sessions = days.size;
+  st.dayVol = Math.max(0, ...dayVals.map(d => d.vol));
+  st.daySets = Math.max(0, ...dayVals.map(d => d.n));
+  st.runs = db.runs.length;
+  st.progsDone = new Set(db.runs.map(r => r.progId)).size;
+  return st;
+}
+
+// Enregistre les badges nouvellement obtenus. Sans célébration (chargement, import),
+// ils sont datés à 1 pour ne pas apparaître comme « gagnés aujourd'hui ».
+function syncBadges(celebrate) {
+  const st = computeStats();
+  const fresh = BADGES.filter(b => st[b.key] >= b.goal && !db.badges[b.id]);
+  if (!fresh.length) return fresh;
+  fresh.forEach(b => { db.badges[b.id] = celebrate ? Date.now() : 1; });
+  save();
+  if (celebrate) {
+    vibrate([100, 60, 100, 60, 250]);
+    toast('🏅 Badge débloqué : ' + fresh.map(b => b.icon + ' ' + b.name).join(', ') + ' !', 3500);
+  }
+  return fresh;
 }
 
 function vibrate(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
 
 // ---------- État de l'interface ----------
-const ui = { tab: db.active ? 'programmes' : 'seance', exId: null, editProg: null, summary: null, chrono: null, search: '', w: 0, r: 10, progEx: null, alerted: null };
+const ui = { tab: db.active ? 'programmes' : 'seance', exId: null, editProg: null, summary: null, badges: false, chrono: null, search: '', w: 0, r: 10, progEx: null, alerted: null };
 
 // ---------- Rendu ----------
 function render() {
@@ -521,13 +630,14 @@ function render() {
     if (b.dataset.tab === ui.tab) b.setAttribute('aria-current', 'page');
     else b.removeAttribute('aria-current');
   });
-  $('#back').hidden = !(ui.exId || ui.editProg || ui.summary);
+  $('#back').hidden = !(ui.exId || ui.editProg || ui.summary || ui.badges);
   const views = {
     seance: viewPicker,
     programmes: () => ui.editProg ? viewProgEdit() : db.active ? viewRun() : viewPrograms(),
     historique: viewHistory, progres: viewProgress, reglages: viewSettings
   };
   if (ui.summary) viewSummary();
+  else if (ui.badges) viewBadges();
   else if (ui.exId && (ui.tab === 'seance' || ui.tab === 'programmes')) viewExercise();
   else views[ui.tab]();
   updateTimer();
@@ -540,6 +650,7 @@ function pushSub() { history.pushState({ sub: 1 }, ''); }
 function closeSub() {
   if (ui.exId) ui.exId = null;
   else if (ui.summary) ui.summary = null;
+  else if (ui.badges) ui.badges = false;
   else ui.editProg = null;
   render();
 }
@@ -717,6 +828,7 @@ function recordSet(exId, w, r) {
   if (hadSets && w > prevMax) toast('🏆 Nouveau record : ' + fmtW(w) + ' !');
   else if (ctx && ctx.item.exId === exId && runSets(exId).length === ctx.item.sets) toast('Exercice terminé ✓');
   else toast('Série enregistrée ✓');
+  syncBadges(true);
   render();
 }
 
@@ -853,7 +965,8 @@ function finishRun() {
   if (count) {
     p.lastDone = Date.now();
     db.runs.push({ progId: p.id, start, end });
-    ui.summary = { progId: p.id, start, end, finished: true };
+    syncBadges(true);
+    ui.summary = { progId: p.id, start, end, finished: true, badgeTo: Date.now() };
     pushSub();
   }
   save();
@@ -917,6 +1030,8 @@ function viewSummary() {
   }).join('');
 
   const p = sm.progId && progById(sm.progId);
+  const badgeTo = sm.badgeTo || sm.end + 60e3;
+  const won = BADGES.filter(b => db.badges[b.id] >= sm.start && db.badges[b.id] <= badgeTo);
   $('#app').innerHTML = `
     <div class="card hero">
       <div class="big">${sm.finished ? '💪' : '📋'}</div>
@@ -929,6 +1044,7 @@ function viewSummary() {
       <div class="stat"><div class="k">Volume (kg)</div><div class="val">${fmtNum(cur.vol)}</div>${delta(cur.vol, prev && prev.vol, fmtNum)}</div>
     </div>
     ${records.length ? `<div class="card"><b>🏆 Record${records.length > 1 ? 's' : ''} battu${records.length > 1 ? 's' : ''}</b><ul>${records.map(r => `<li>${esc(r)}</li>`).join('')}</ul></div>` : ''}
+    ${won.length ? `<div class="card"><b>🏅 Badge${won.length > 1 ? 's' : ''} débloqué${won.length > 1 ? 's' : ''}</b><ul>${won.map(b => `<li>${b.icon} <b>${esc(b.name)}</b> — ${esc(b.desc)}</li>`).join('')}</ul></div>` : ''}
     ${suggestions.length ? `<div class="card"><b>📈 Pour la prochaine fois</b><ul>${suggestions.map(r => `<li>${esc(r)}</li>`).join('')}</ul></div>` : ''}
     <div class="section-title">Exercices</div>
     <div class="card day">${exHtml}</div>
@@ -1012,12 +1128,45 @@ function viewHistory() {
 }
 
 // Progression par exercice
+function badgesEntry() {
+  const got = BADGES.filter(b => db.badges[b.id]);
+  const st = computeStats();
+  return `<button class="row" data-act="badges" style="margin-bottom:12px">
+    <div class="grow"><div class="title">🏅 Badges · ${got.length} / ${BADGES.length}</div>
+      <div class="sub">${got.length ? '' : 'Aucun pour l’instant · '}${st.curStreak ? '🔥 ' + st.curStreak + ' semaine' + (st.curStreak > 1 ? 's' : '') + ' d’affilée' : 'Touche pour voir les défis'}</div>
+      ${got.length ? `<div class="badge-icons">${got.map(b => b.icon).join('')}</div>` : ''}</div>
+    <span class="chev">›</span></button>`;
+}
+
+function viewBadges() {
+  setTitle('Badges');
+  const st = computeStats();
+  const ratio = b => Math.min(1, st[b.key] / b.goal);
+  const list = [...BADGES].sort((a, b) => (!!db.badges[b.id] - !!db.badges[a.id]) || ratio(b) - ratio(a));
+  const tiles = list.map(b => {
+    const ok = !!db.badges[b.id];
+    const v = Math.min(st[b.key], b.goal);
+    const foot = ok ? '<div class="bp ok">✓ Obtenu</div>'
+      : b.goal > 1 ? `<div class="bar"><div style="width:${(v / b.goal * 100).toFixed(0)}%"></div></div><div class="bp">${fmtNum(Math.floor(v))} / ${fmtNum(b.goal)}</div>`
+      : '<div class="bp">À débloquer</div>';
+    return `<div class="badge-tile ${ok ? 'ok' : ''}"><div class="bi">${b.icon}</div>
+      <div class="bn">${esc(b.name)}</div><div class="bd">${esc(b.desc)}</div>${foot}</div>`;
+  }).join('');
+  const got = BADGES.filter(b => db.badges[b.id]).length;
+  $('#app').innerHTML = `
+    <div class="card" style="padding:12px 14px">
+      <div class="small"><b>${got} / ${BADGES.length}</b> badges obtenus${st.curStreak ? ` · 🔥 ${st.curStreak} semaine${st.curStreak > 1 ? 's' : ''} d’affilée` : ''}</div>
+      <div class="progress"><div style="width:${Math.round(got / BADGES.length * 100)}%"></div></div>
+    </div>
+    <div class="badges">${tiles}</div>`;
+}
+
 function viewProgress() {
   setTitle('Progrès');
   const done = db.exercises.filter(e => db.sets.some(s => s.exId === e.id))
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   if (!done.length) {
-    $('#app').innerHTML = `<div class="empty"><div class="big">📈</div>Enregistre quelques séries pour voir ta progression.</div>`;
+    $('#app').innerHTML = badgesEntry() + `<div class="empty"><div class="big">📈</div>Enregistre quelques séries pour voir ta progression.</div>`;
     return;
   }
   if (!done.some(e => e.id === ui.progEx)) {
@@ -1039,6 +1188,7 @@ function viewProgress() {
     <div class="detail">${s.sets.map(fmtSet).join(' · ')}</div></div>`).join('');
 
   $('#app').innerHTML = `
+    ${badgesEntry()}
     <select class="search" id="progEx">
       ${done.map(e => `<option value="${e.id}" ${e.id === ui.progEx ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}
     </select>
@@ -1135,7 +1285,7 @@ function importData(file) {
       const d = JSON.parse(reader.result);
       if (!d || !Array.isArray(d.exercises) || !Array.isArray(d.sets)) throw new Error('format');
       if (!confirm(`Remplacer tes données actuelles par cette sauvegarde (${d.sets.length} séries) ?`)) return;
-      db = migrate(d); save(); ui.exId = null; ui.editProg = null; ui.summary = null; ui.progEx = null;
+      db = migrate(d); syncBadges(false); save(); ui.exId = null; ui.editProg = null; ui.summary = null; ui.badges = false; ui.progEx = null;
       toast('Sauvegarde importée ✓'); render();
     } catch (e) { alert('Ce fichier n’est pas une sauvegarde Muscu valide.'); }
   };
@@ -1179,7 +1329,7 @@ document.querySelector('nav').addEventListener('click', e => {
   const b = e.target.closest('button[data-tab]');
   if (!b) return;
   ui.tab = b.dataset.tab;
-  ui.exId = null; ui.editProg = null; ui.summary = null;
+  ui.exId = null; ui.editProg = null; ui.summary = null; ui.badges = false;
   render();
   window.scrollTo(0, 0);
 });
@@ -1284,6 +1434,7 @@ $('#app').addEventListener('click', e => {
     case 'cstop': stopChrono(true); break;
     case 'ccancel': stopChrono(false); break;
     case 'sumclose': $('#back').click(); break;
+    case 'badges': ui.badges = true; pushSub(); render(); window.scrollTo(0, 0); break;
     case 'daysum': {
       const day = t.dataset.day;
       const list = db.sets.filter(s => dayKey(s.t) === day).sort((a, b) => a.t - b.t);
@@ -1363,7 +1514,7 @@ $('#app').addEventListener('click', e => {
     }
     case 'wipe':
       if (confirm('Effacer TOUTES tes séances, exercices et programmes ? Cette action est définitive.')) {
-        db = freshDb(); save(); ui.exId = null; ui.editProg = null; ui.progEx = null; render(); toast('Données effacées');
+        db = freshDb(); save(); ui.exId = null; ui.editProg = null; ui.summary = null; ui.badges = false; ui.progEx = null; render(); toast('Données effacées');
       }
       break;
   }
@@ -1376,11 +1527,12 @@ $('#importFile').addEventListener('change', e => {
 });
 
 // Bouton retour Android / geste retour
-window.addEventListener('popstate', () => { if (ui.exId || ui.editProg || ui.summary) closeSub(); });
+window.addEventListener('popstate', () => { if (ui.exId || ui.editProg || ui.summary || ui.badges) closeSub(); });
 
 // Synchronisation si l'app est ouverte dans deux onglets
 window.addEventListener('storage', e => { if (e.key === STORE_KEY) { db = load(); render(); } });
 
+syncBadges(false); // badges déjà mérités avant cette version : sans fanfare
 render();
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
