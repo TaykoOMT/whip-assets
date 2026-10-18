@@ -9,7 +9,14 @@ et garde tes données **sur ton téléphone** (rien n'est envoyé sur internet).
 - **Séance** : choisis un exercice (ou tape son nom pour en créer un), règle le poids et les
   répétitions avec les boutons − / +, puis « Ajouter la série ». Les valeurs de ta dernière
   séance sont pré-remplies et rappelées en haut de l'écran.
-- **Chrono de repos** : le temps écoulé depuis ta dernière série s'affiche en haut à droite.
+- **Programmes** : tes séances toutes prêtes (A, B, C). « Lancer la séance » te guide exercice par
+  exercice avec l'objectif (séries × répétitions, repos) : tu n'as qu'à valider le poids et les
+  répétitions de chaque série, puis « Exercice suivant ». Les programmes se modifient
+  (exercices, séries, objectif, repos, conseil) et tu peux en créer d'autres.
+- **Chrono de repos** : pendant un programme, compte à rebours selon le repos prévu (le téléphone
+  vibre à la fin) ; sinon, temps écoulé depuis ta dernière série.
+- **Exercices en durée** : gainage, killy, course… se notent en secondes ou en minutes
+  (Réglages → Exercices → type).
 - **Records** : 🏆 quand tu dépasses ta charge max sur un exercice.
 - **Historique** : toutes tes séances, jour par jour, avec le tonnage soulevé.
 - **Progrès** : courbe de la charge max par séance, record, 1RM estimé.

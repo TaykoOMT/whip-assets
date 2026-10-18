@@ -60,7 +60,11 @@
     display: flex; align-items: center; gap: 10px;
     min-height: 56px;
   }
-  header h1 { font-size: 22px; margin: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  header h1 {
+    font-size: 21px; line-height: 1.2; margin: 0; flex: 1; min-width: 0;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  header .timer { flex: none; }
   .back { font-size: 26px; width: 40px; height: 40px; margin-left: -8px; border-radius: 12px; }
   .back:active { background: var(--surface); }
 
@@ -71,14 +75,14 @@
 
   nav {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
-    display: grid; grid-template-columns: repeat(4, 1fr);
+    display: grid; grid-template-columns: repeat(5, 1fr);
     background: var(--surface);
     border-top: 1px solid var(--border);
     padding-bottom: env(safe-area-inset-bottom);
   }
   nav button {
     padding: 8px 0 10px; display: flex; flex-direction: column; align-items: center; gap: 2px;
-    font-size: 12px; color: var(--muted);
+    font-size: 11px; color: var(--muted); white-space: nowrap;
   }
   nav button svg { width: 24px; height: 24px; }
   nav button[aria-current="page"] { color: var(--accent); }
@@ -202,6 +206,45 @@
   .ex-edit span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ex-edit button { padding: 8px 10px; border-radius: 10px; font-size: 14px; color: var(--muted); }
   .ex-edit button:active { background: var(--surface-2); }
+  .ex-edit select { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 4px; font-size: 13px; }
+
+  .timer.ready { background: #1f9d55; border-color: #1f9d55; color: #fff; font-weight: 700; }
+
+  /* Programmes */
+  .prog .title { font-weight: 700; font-size: 18px; }
+  .prog-head { display: flex; align-items: flex-start; gap: 10px; }
+  .prog-head .grow { flex: 1; min-width: 0; }
+  .prog-ex { font-size: 14px; color: var(--muted); margin-top: 8px; }
+  .link { color: var(--accent); font-weight: 600; font-size: 15px; padding: 4px 2px; }
+  .note { font-size: 14px; color: var(--muted); margin: 0 4px 12px; }
+  .progress { height: 8px; background: var(--surface-2); border-radius: 999px; overflow: hidden; margin: 4px 0 6px; }
+  .progress > div { height: 100%; background: var(--accent); border-radius: 999px; transition: width .3s; }
+  .step {
+    width: 30px; height: 30px; border-radius: 50%; flex: none;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--surface-2); color: var(--muted); font-weight: 700; font-size: 14px;
+  }
+  .step.ok { background: #1f9d55; color: #fff; }
+  .count { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .count.ok { color: #1f9d55; }
+  .target { margin: 0 4px 6px; font-size: 15px; }
+  .target b { font-weight: 700; }
+  .tip { font-size: 14px; color: var(--muted); margin: 0 4px 6px; }
+  .field {
+    width: 100%; padding: 10px 12px; border-radius: 10px;
+    background: var(--surface-2); border: 1px solid var(--border); outline: none;
+  }
+  .field:focus { border-color: var(--accent); }
+  textarea.field { resize: vertical; font: inherit; }
+  .lbl { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  .lbl:first-child { margin-top: 0; }
+  .item-head { display: flex; align-items: center; gap: 10px; }
+  .item-grid { display: grid; grid-template-columns: 70px 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .item-grid label { font-size: 12px; color: var(--muted); }
+  .item-grid .field { margin-top: 3px; padding: 8px 10px; }
+  .item-actions { display: flex; gap: 6px; margin-top: 8px; }
+  .item-actions button { padding: 8px 12px; border-radius: 10px; background: var(--surface-2); font-size: 14px; }
+  .item-actions .danger { margin-left: auto; }
 </style>
 </head>
 <body>
@@ -215,6 +258,10 @@
   <button data-tab="seance" aria-current="page">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 7v10M3 9v6M18 7v10M21 9v6M6 12h12"/></svg>
     Séance
+  </button>
+  <button data-tab="programmes">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/></svg>
+    Programmes
   </button>
   <button data-tab="historique">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>
@@ -244,15 +291,75 @@ const DEFAULT_EXERCISES = [
   'Dips', 'Fentes', 'Tirage vertical', 'Leg curl', 'Mollets debout'
 ];
 
+// Programmes de départ : [exercice, séries, objectif, repos, type, conseil]
+// type : 'reps' (défaut), 's' (durée en secondes) ou 'min' (durée en minutes)
+const SEED_PROGRAMS = [
+  {
+    name: 'Séance A — Haut du corps',
+    note: 'Échauffement : 5–8 min de vélo ou de marche, rotations des épaules et quelques séries légères.',
+    items: [
+      ['Tractions pronation', 4, '4–5', '2–3 min'],
+      ['Développé incliné haltères', 3, '8–12', '90–120 s'],
+      ['Rowing poulie basse', 3, '8–12', '90–120 s'],
+      ['Développé militaire haltères', 2, '8–12', '90 s'],
+      ['Pompes', 2, '15–25', '60–90 s'],
+      ['Curl marteau', 2, '8–12', '60–90 s']
+    ]
+  },
+  {
+    name: 'Séance B — Jambes et cardio',
+    note: 'Échauffement : 5–8 min d’échauffement général et quelques mouvements de jambes sans charge avant la presse.',
+    items: [
+      ['Presse à cuisses', 3, '8–12', '2 min'],
+      ['Leg curl assis', 3, '10–12', '90 s'],
+      ['Fentes arrière', 2, '8 par jambe', '90 s'],
+      ['Mollets', 2, '15–20', '60 s'],
+      ['Course sur tapis', 1, '20 min', '', 'min', 'Allure facile : tu dois pouvoir parler. Alterne course et marche si nécessaire.'],
+      ['Gainage', 3, '30–45 s', '60 s', 's']
+    ]
+  },
+  {
+    name: 'Séance C — Corps entier et endurance',
+    note: 'Durée : 1 h 10 à 1 h 20. Repos : 2 min sur les tractions et les exercices principaux, 60–90 s sur les autres. Garde une bonne technique plutôt que d’aller vite.',
+    items: [
+      ['Tractions pronation', 3, '3–5', '2 min'],
+      ['Développé incliné haltères', 2, '8–12', '2 min'],
+      ['Rowing poulie basse', 2, '10–12', '2 min'],
+      ['Squats au poids du corps', 3, '15', '60–90 s'],
+      ['Pompes', 2, '15–20', '60–90 s'],
+      ['Killy contre un mur', 3, '30–40 s', '60–90 s', 's'],
+      ['Gainage', 2, '30–45 s', '60–90 s', 's']
+    ]
+  }
+];
+
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+const norm = s => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+
+function findOrCreateEx(d, name, kind) {
+  let ex = d.exercises.find(e => norm(e.name) === norm(name));
+  if (!ex) { ex = { id: uid(), name }; d.exercises.push(ex); }
+  if (kind && kind !== 'reps' && !ex.kind) ex.kind = kind;
+  return ex;
+}
+
+// Met à niveau une base (ancienne version, import…) vers le format actuel
+function migrate(d) {
+  d.settings = Object.assign({ step: 2.5 }, d.settings);
+  if (!Array.isArray(d.programs)) {
+    d.programs = SEED_PROGRAMS.map(sp => ({
+      id: uid(), name: sp.name, note: sp.note,
+      items: sp.items.map(([n, sets, target, rest, kind, tip]) =>
+        ({ exId: findOrCreateEx(d, n, kind).id, sets, target, rest, tip: tip || '' }))
+    }));
+  }
+  if (d.active && (Date.now() - d.active.start > 12 * 3600e3 || !d.programs.some(p => p.id === d.active.progId))) d.active = null;
+  d.v = 2;
+  return d;
+}
 
 function freshDb() {
-  return {
-    v: 1,
-    exercises: DEFAULT_EXERCISES.map(name => ({ id: uid(), name })),
-    sets: [],
-    settings: { step: 2.5 }
-  };
+  return migrate({ v: 1, exercises: DEFAULT_EXERCISES.map(name => ({ id: uid(), name })), sets: [], settings: { step: 2.5 } });
 }
 
 function load() {
@@ -260,10 +367,7 @@ function load() {
     const raw = localStorage.getItem(STORE_KEY);
     if (raw) {
       const d = JSON.parse(raw);
-      if (d && Array.isArray(d.exercises) && Array.isArray(d.sets)) {
-        d.settings = Object.assign({ step: 2.5 }, d.settings);
-        return d;
-      }
+      if (d && Array.isArray(d.exercises) && Array.isArray(d.sets)) return migrate(d);
     }
   } catch (e) { /* stockage indisponible */ }
   return freshDb();
@@ -285,7 +389,19 @@ const num = s => { const n = parseFloat(String(s).replace(',', '.')); return isF
 const round2 = n => Math.round(n * 100) / 100;
 const fmtNum = n => n.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
 const fmtW = w => w > 0 ? fmtNum(w) + ' kg' : 'PDC';
-const fmtSet = s => (s.w > 0 ? fmtNum(s.w) : 'PDC') + ' × ' + s.r;
+const firstNum = str => { const m = String(str || '').match(/\d+([.,]\d+)?/); return m ? num(m[0]) : 0; };
+// "2–3 min" → 120, "90–120 s" → 90
+const parseRest = str => { const n = firstNum(str); return /min/.test(str) ? n * 60 : n; };
+const mmss = sec => Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+
+const exById = id => db.exercises.find(e => e.id === id);
+const kindOf = exId => (exById(exId) || {}).kind || 'reps';
+function fmtSet(s) {
+  const k = kindOf(s.exId);
+  if (k !== 'reps') return (s.w > 0 ? fmtNum(s.w) + ' kg · ' : '') + s.r + ' ' + k;
+  return (s.w > 0 ? fmtNum(s.w) : 'PDC') + ' × ' + s.r;
+}
+const fmtSetLong = s => kindOf(s.exId) === 'reps' ? fmtW(s.w) + ' × ' + s.r : fmtSet(s);
 
 function dayKey(t) {
   const d = new Date(t);
@@ -304,7 +420,6 @@ function relDay(key) {
   return fmtDay(key, { day: 'numeric', month: 'short' });
 }
 
-const exById = id => db.exercises.find(e => e.id === id);
 const setsOf = exId => db.sets.filter(s => s.exId === exId).sort((a, b) => a.t - b.t);
 const e1rm = s => s.w * (1 + s.r / 30); // formule d'Epley
 
@@ -319,6 +434,16 @@ function sessionsOf(exId) {
   return [...map.entries()].map(([day, sets]) => ({ day, sets }));
 }
 
+// Programme en cours
+const progById = id => db.programs.find(p => p.id === id);
+const runSets = exId => db.active ? setsOf(exId).filter(s => s.t >= db.active.start) : [];
+function progCtx() {
+  if (ui.tab !== 'programmes' || !db.active) return null;
+  const p = progById(db.active.progId);
+  const i = p ? p.items.findIndex(it => it.exId === ui.exId) : -1;
+  return i < 0 ? null : { p, i, item: p.items[i] };
+}
+
 let toastTimer;
 function toast(msg) {
   const el = $('#toast');
@@ -328,10 +453,10 @@ function toast(msg) {
   toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
 }
 
-function vibrate(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} }
+function vibrate(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
 
 // ---------- État de l'interface ----------
-const ui = { tab: 'seance', exId: null, search: '', w: 0, r: 10, progEx: null, manage: false };
+const ui = { tab: db.active ? 'programmes' : 'seance', exId: null, editProg: null, search: '', w: 0, r: 10, progEx: null, alerted: null };
 
 // ---------- Rendu ----------
 function render() {
@@ -339,13 +464,26 @@ function render() {
     if (b.dataset.tab === ui.tab) b.setAttribute('aria-current', 'page');
     else b.removeAttribute('aria-current');
   });
-  $('#back').hidden = !(ui.tab === 'seance' && ui.exId);
-  const views = { seance: ui.exId ? viewExercise : viewPicker, historique: viewHistory, progres: viewProgress, reglages: viewSettings };
-  views[ui.tab]();
+  $('#back').hidden = !(ui.exId || ui.editProg);
+  const views = {
+    seance: viewPicker,
+    programmes: () => ui.editProg ? viewProgEdit() : db.active ? viewRun() : viewPrograms(),
+    historique: viewHistory, progres: viewProgress, reglages: viewSettings
+  };
+  if (ui.exId && (ui.tab === 'seance' || ui.tab === 'programmes')) viewExercise();
+  else views[ui.tab]();
   updateTimer();
 }
 
 function setTitle(t) { $('#title').textContent = t; }
+
+// Ouvre un sous-écran (exercice, édition) : le bouton retour du téléphone y revient
+function pushSub() { history.pushState({ sub: 1 }, ''); }
+function closeSub() {
+  if (ui.exId) ui.exId = null;
+  else ui.editProg = null;
+  render();
+}
 
 // Liste des exercices
 function viewPicker() {
@@ -358,7 +496,6 @@ function viewPicker() {
     const todayCount = sets.filter(s => dayKey(s.t) === today).length;
     return { ex, last, todayCount };
   });
-  const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const filtered = info.filter(i => !q || norm(i.ex.name).includes(norm(q)));
   filtered.sort((a, b) => (b.todayCount > 0) - (a.todayCount > 0)
     || (b.last ? b.last.t : 0) - (a.last ? a.last.t : 0)
@@ -385,68 +522,82 @@ function viewPicker() {
     </div>`;
 }
 
-// Saisie des séries pour un exercice
+// Saisie des séries pour un exercice (séance libre ou programme)
 function viewExercise() {
   const ex = exById(ui.exId);
-  if (!ex) { ui.exId = null; return viewPicker(); }
+  if (!ex) { ui.exId = null; return render(); }
   setTitle(ex.name);
+  const ctx = progCtx();
+  const kind = ex.kind || 'reps';
   const today = todayKey();
   const sessions = sessionsOf(ex.id);
   const todaySets = sessions.length && sessions[sessions.length - 1].day === today ? sessions[sessions.length - 1].sets : [];
+  const shown = ctx ? runSets(ex.id) : todaySets;
   const prev = sessions.filter(s => s.day !== today).pop();
   const prevMax = Math.max(0, ...db.sets.filter(s => s.exId === ex.id).map(s => s.w));
 
+  const targetLine = ctx ? `
+    <div class="target">Objectif : <b>${ctx.item.sets} × ${esc(ctx.item.target)}</b>${ctx.item.rest ? ' · repos ' + esc(ctx.item.rest) : ''}</div>
+    ${ctx.item.tip ? `<div class="tip">💡 ${esc(ctx.item.tip)}</div>` : ''}` : '';
   const lastLine = prev
     ? `<div class="last">Dernière fois (${esc(relDay(prev.day))}) : <b>${prev.sets.map(fmtSet).join(' · ')}</b></div>`
     : `<div class="last">Première fois sur cet exercice 💪</div>`;
 
-  // Record : première série atteignant le poids max de l'exercice
+  // Record : première série atteignant le poids max (pas sur la toute première séance)
   let recordId = null;
   if (prevMax > 0) {
     const first = db.sets.filter(s => s.exId === ex.id && s.w === prevMax).sort((a, b) => a.t - b.t)[0];
-    // Pas de record sur la toute première séance de l'exercice
     if (first && db.sets.some(s => s.exId === ex.id && dayKey(s.t) !== dayKey(first.t) && s.t < first.t)) recordId = first.id;
   }
 
-  const setsHtml = todaySets.map((s, i) => `
+  const setsHtml = shown.map((s, i) => `
     <div class="set">
       <span class="n">${i + 1}</span>
-      <span class="v" data-act="reuse" data-id="${s.id}">${fmtW(s.w)} × ${s.r}${s.id === recordId ? '<span class="pr">🏆 RECORD</span>' : ''}</span>
+      <span class="v" data-act="reuse" data-id="${s.id}">${esc(fmtSetLong(s))}${s.id === recordId ? '<span class="pr">🏆 RECORD</span>' : ''}</span>
       <button class="x" data-act="del" data-id="${s.id}" aria-label="Supprimer">✕</button>
     </div>`).join('');
 
+  const n = shown.length + 1;
+  const done = ctx && shown.length >= ctx.item.sets;
+  const next = ctx && ctx.p.items[ctx.i + 1];
+  let addLabel = 'Ajouter la série ' + n;
+  if (ctx) addLabel = done ? '+ Série en plus' : `Valider la série ${n} / ${ctx.item.sets}`;
+  const repsLabel = kind === 's' ? 'Durée (secondes)' : kind === 'min' ? 'Durée (minutes)' : 'Répétitions';
+
   $('#app').innerHTML = `
+    ${targetLine}
     ${lastLine}
     <div class="card">
       <div class="steppers">
-        <div class="stepper">
+        ${kind === 'reps' ? `<div class="stepper">
           <label for="w">Poids (kg)</label>
           <div class="ctrl">
             <button data-act="w-" aria-label="Moins de poids">−</button>
             <input id="w" inputmode="decimal" value="${fmtNum(ui.w)}" autocomplete="off">
             <button data-act="w+" aria-label="Plus de poids">+</button>
           </div>
-        </div>
+        </div>` : ''}
         <div class="stepper">
-          <label for="r">Répétitions</label>
+          <label for="r">${repsLabel}</label>
           <div class="ctrl">
-            <button data-act="r-" aria-label="Moins de répétitions">−</button>
+            <button data-act="r-" aria-label="Moins">−</button>
             <input id="r" inputmode="numeric" value="${ui.r}" autocomplete="off">
-            <button data-act="r+" aria-label="Plus de répétitions">+</button>
+            <button data-act="r+" aria-label="Plus">+</button>
           </div>
         </div>
       </div>
-      <button class="primary" data-act="add">Ajouter la série ${todaySets.length + 1}</button>
+      <button class="${done ? 'secondary' : 'primary'}" data-act="add">${addLabel}</button>
     </div>
-    ${todaySets.length ? `<div class="section-title">Aujourd’hui</div><div class="sets">${setsHtml}</div>` : ''}
-    <div class="small muted" style="margin:14px 4px 0">Astuce : mets 0 kg pour un exercice au poids du corps (PDC). Touche une série pour reprendre ses valeurs.</div>`;
+    ${done ? `<button class="primary" data-act="next" style="margin-bottom:12px">${next ? 'Exercice suivant : ' + esc((exById(next.exId) || {}).name || '') + ' ›' : 'Dernier exercice fait ✓ Retour à la séance'}</button>` : ''}
+    ${shown.length ? `<div class="section-title">${ctx ? 'Cette séance' : 'Aujourd’hui'}</div><div class="sets">${setsHtml}</div>` : ''}
+    ${!ctx ? `<div class="small muted" style="margin:14px 4px 0">Astuce : mets 0 kg pour un exercice au poids du corps (PDC). Touche une série pour reprendre ses valeurs.</div>` : ''}`;
 }
 
-function openExercise(id) {
-  ui.exId = id;
-  history.pushState({ ex: id }, '');
+// Pré-remplit poids / répétitions avec les dernières valeurs connues
+function prefill(id) {
   const sets = setsOf(id);
   const last = sets[sets.length - 1];
+  const ctx = progCtx();
   if (last) {
     // Reprendre la dernière série d'aujourd'hui, sinon la 1re de la séance précédente
     if (dayKey(last.t) === todayKey()) { ui.w = last.w; ui.r = last.r; }
@@ -455,7 +606,16 @@ function openExercise(id) {
       const first = sets.find(s => dayKey(s.t) === prevDay);
       ui.w = first.w; ui.r = first.r;
     }
-  } else { ui.w = 0; ui.r = 10; }
+  } else {
+    ui.w = 0;
+    ui.r = (ctx && firstNum(ctx.item.target)) || (kindOf(id) === 's' ? 30 : kindOf(id) === 'min' ? 10 : 10);
+  }
+}
+
+function openExercise(id) {
+  ui.exId = id;
+  pushSub();
+  prefill(id);
   render();
   window.scrollTo(0, 0);
 }
@@ -468,15 +628,130 @@ function readInputs() {
 
 function addSet() {
   readInputs();
-  if (ui.r < 1) { toast('Indique le nombre de répétitions'); return; }
+  const kind = kindOf(ui.exId);
+  if (kind !== 'reps') ui.w = 0;
+  if (ui.r < 1) { toast(kind === 'reps' ? 'Indique le nombre de répétitions' : 'Indique la durée'); return; }
   const prevMax = Math.max(0, ...db.sets.filter(s => s.exId === ui.exId).map(s => s.w));
   const hadSets = db.sets.some(s => s.exId === ui.exId);
   db.sets.push({ id: uid(), exId: ui.exId, w: ui.w, r: ui.r, t: Date.now() });
   save();
   vibrate(30);
+  const ctx = progCtx();
   if (hadSets && ui.w > prevMax) toast('🏆 Nouveau record : ' + fmtW(ui.w) + ' !');
+  else if (ctx && runSets(ui.exId).length === ctx.item.sets) toast('Exercice terminé ✓');
   else toast('Série enregistrée ✓');
   render();
+}
+
+// ---------- Programmes ----------
+function viewPrograms() {
+  setTitle('Programmes');
+  const cards = db.programs.map(p => {
+    const names = p.items.map(it => (exById(it.exId) || {}).name).filter(Boolean);
+    const sub = p.items.length + ' exercice' + (p.items.length > 1 ? 's' : '') + (p.lastDone ? ' · fait ' + relDay(dayKey(p.lastDone)) : '');
+    return `<div class="card prog">
+      <div class="prog-head">
+        <div class="grow"><div class="title">${esc(p.name)}</div><div class="small muted">${esc(sub)}</div></div>
+        <button class="link" data-act="pedit" data-id="${p.id}">Modifier</button>
+      </div>
+      ${names.length ? `<div class="prog-ex">${names.map(esc).join(' · ')}</div>` : ''}
+      <button class="primary" data-act="launch" data-id="${p.id}">▶ Lancer la séance</button>
+    </div>`;
+  }).join('');
+  $('#app').innerHTML = `
+    ${cards || '<div class="empty"><div class="big">📋</div>Aucun programme pour l’instant.</div>'}
+    <button class="row add" data-act="pnew">+ Nouveau programme</button>`;
+}
+
+// Séance en cours : liste des exercices du programme avec l'avancement
+function viewRun() {
+  const p = progById(db.active.progId);
+  setTitle(p.name);
+  let total = 0, done = 0;
+  const rows = p.items.map((it, i) => {
+    const ex = exById(it.exId);
+    const n = runSets(it.exId).length;
+    const ok = n >= it.sets;
+    total += it.sets; done += Math.min(n, it.sets);
+    return `<button class="row" data-act="open" data-id="${it.exId}">
+      <span class="step ${ok ? 'ok' : ''}">${ok ? '✓' : i + 1}</span>
+      <div class="grow"><div class="title">${esc(ex ? ex.name : '?')}</div>
+        <div class="sub">${it.sets} × ${esc(it.target)}${it.rest ? ' · repos ' + esc(it.rest) : ''}</div></div>
+      <span class="count ${ok ? 'ok' : ''}">${n}/${it.sets}</span><span class="chev">›</span></button>`;
+  }).join('');
+  const pct = total ? Math.round(done / total * 100) : 0;
+  $('#app').innerHTML = `
+    ${p.note ? `<div class="note">${esc(p.note)}</div>` : ''}
+    <div class="card" style="padding:12px 14px">
+      <div class="small"><b>${done} / ${total}</b> séries · ${pct} %</div>
+      <div class="progress"><div style="width:${pct}%"></div></div>
+    </div>
+    <div class="list" style="margin-top:0">${rows}</div>
+    <button class="primary" data-act="finish" style="margin-top:16px">Terminer la séance</button>
+    <button class="secondary" data-act="cancelrun">Annuler la séance</button>`;
+}
+
+function launch(id) {
+  const p = progById(id);
+  if (!p || !p.items.length) { toast('Ajoute d’abord des exercices à ce programme'); return; }
+  db.active = { progId: id, start: Date.now() };
+  save();
+  openExercise(p.items[0].exId);
+}
+
+function finishRun() {
+  const p = progById(db.active.progId);
+  const count = db.sets.filter(s => s.t >= db.active.start).length;
+  const total = p.items.reduce((a, it) => a + it.sets, 0);
+  const done = p.items.reduce((a, it) => a + Math.min(runSets(it.exId).length, it.sets), 0);
+  if (done < total && !confirm(`Il reste ${total - done} série(s) prévue(s). Terminer quand même ?`)) return;
+  if (count) p.lastDone = Date.now();
+  db.active = null; save();
+  render();
+  toast(count ? `Séance terminée 💪 ${count} série${count > 1 ? 's' : ''}` : 'Séance terminée');
+}
+
+// Édition d'un programme
+function viewProgEdit() {
+  const p = progById(ui.editProg);
+  if (!p) { ui.editProg = null; return render(); }
+  setTitle('Modifier');
+  const exs = [...db.exercises].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const opts = sel => exs.map(e => `<option value="${e.id}" ${e.id === sel ? 'selected' : ''}>${esc(e.name)}</option>`).join('');
+  const items = p.items.map((it, i) => `
+    <div class="card">
+      <div class="item-head"><span class="step">${i + 1}</span>
+        <select class="field" data-if="exId" data-i="${i}">${opts(it.exId)}</select></div>
+      <div class="item-grid">
+        <label>Séries<input class="field" inputmode="numeric" data-if="sets" data-i="${i}" value="${it.sets}"></label>
+        <label>Objectif<input class="field" data-if="target" data-i="${i}" value="${esc(it.target)}" placeholder="8–12"></label>
+        <label>Repos<input class="field" data-if="rest" data-i="${i}" value="${esc(it.rest)}" placeholder="90 s"></label>
+      </div>
+      <label class="lbl">Conseil (facultatif)</label>
+      <input class="field" data-if="tip" data-i="${i}" value="${esc(it.tip || '')}">
+      <div class="item-actions">
+        <button data-act="iup" data-i="${i}" aria-label="Monter">↑</button>
+        <button data-act="idown" data-i="${i}" aria-label="Descendre">↓</button>
+        <button data-act="idel" data-i="${i}" class="danger">Retirer</button>
+      </div>
+    </div>`).join('');
+  $('#app').innerHTML = `
+    <div class="card">
+      <label class="lbl" for="pname">Nom</label>
+      <input class="field" id="pname" data-pf="name" value="${esc(p.name)}">
+      <label class="lbl" for="pnote">Note (échauffement, consignes…)</label>
+      <textarea class="field" id="pnote" data-pf="note" rows="3">${esc(p.note || '')}</textarea>
+    </div>
+    <div class="section-title">Exercices</div>
+    ${items}
+    <select class="search" id="addItem">
+      <option value="">+ Ajouter un exercice…</option>
+      <option value="__new">✏️ Nouvel exercice…</option>
+      ${opts(null)}
+    </select>
+    <button class="primary" data-act="pdone" style="margin-top:16px">Terminé</button>
+    <button class="secondary danger" data-act="pdel">Supprimer ce programme</button>
+    <div class="small muted" style="margin:12px 4px 0">Le repos sert au compte à rebours entre les séries (ex. « 90 s », « 2 min »).</div>`;
 }
 
 // Historique par jour
@@ -498,7 +773,7 @@ function viewHistory() {
     let total = 0, volume = 0;
     const exHtml = [...exMap.entries()].map(([exId, sets]) => {
       total += sets.length;
-      sets.forEach(s => volume += s.w * s.r);
+      if (kindOf(exId) === 'reps') sets.forEach(s => volume += s.w * s.r);
       const ex = exById(exId);
       return `<div class="ex"><div class="name">${esc(ex ? ex.name : 'Exercice supprimé')}</div>
         <div class="detail">${sets.map(fmtSet).join(' · ')}</div></div>`;
@@ -524,12 +799,15 @@ function viewProgress() {
     const lastSet = [...db.sets].sort((a, b) => b.t - a.t).find(s => done.some(e => e.id === s.exId));
     ui.progEx = lastSet ? lastSet.exId : done[0].id;
   }
+  const kind = kindOf(ui.progEx);
   const sessions = sessionsOf(ui.progEx);
   const all = sessions.flatMap(s => s.sets);
   const bestW = Math.max(...all.map(s => s.w));
   const best1rm = Math.max(...all.map(e1rm));
   const points = sessions.map(s => ({ day: s.day, w: Math.max(...s.sets.map(x => x.w)), reps: Math.max(...s.sets.map(x => x.r)) }));
-  const useReps = bestW === 0; // exercice au poids du corps : on suit les répétitions
+  const useReps = bestW === 0; // poids du corps ou durée : on suit les répétitions / la durée
+  const repsName = kind === 'reps' ? 'Max reps' : 'Durée max';
+  const chartName = kind === 'reps' ? (useReps ? 'Répétitions max par séance' : 'Charge max par séance (kg)') : `Durée max par séance (${kind})`;
 
   const rows = [...sessions].reverse().map(s => `
     <div class="ex"><div class="name">${esc(fmtDay(s.day, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }))}</div>
@@ -540,12 +818,12 @@ function viewProgress() {
       ${done.map(e => `<option value="${e.id}" ${e.id === ui.progEx ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}
     </select>
     <div class="stats" style="margin-top:12px">
-      <div class="stat"><div class="k">${useReps ? 'Max reps' : 'Record'}</div><div class="val">${useReps ? Math.max(...all.map(s => s.r)) : fmtNum(bestW)}</div></div>
+      <div class="stat"><div class="k">${useReps ? repsName : 'Record'}</div><div class="val">${useReps ? Math.max(...all.map(s => s.r)) : fmtNum(bestW)}</div></div>
       <div class="stat"><div class="k">1RM estimé</div><div class="val">${best1rm > 0 ? fmtNum(Math.round(best1rm)) : '–'}</div></div>
       <div class="stat"><div class="k">Séances</div><div class="val">${sessions.length}</div></div>
     </div>
     <div class="card chart">
-      <div class="small muted" style="margin-bottom:6px">${useReps ? 'Répétitions max par séance' : 'Charge max par séance (kg)'}</div>
+      <div class="small muted" style="margin-bottom:6px">${chartName}</div>
       ${chart(points.map(p => ({ day: p.day, v: useReps ? p.reps : p.w })))}
     </div>
     <div class="section-title">Détail des séances</div>
@@ -577,6 +855,7 @@ function viewSettings() {
   setTitle('Réglages');
   const steps = [0.5, 1, 1.25, 2.5, 5];
   const exList = [...db.exercises].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const kinds = [['reps', 'Reps'], ['s', 'Sec.'], ['min', 'Min']];
   $('#app').innerHTML = `
     <div class="section-title">Saisie</div>
     <div class="card">
@@ -593,7 +872,9 @@ function viewSettings() {
 
     <div class="section-title">Exercices</div>
     <div class="card">
+      <div class="small muted" style="margin-bottom:6px">Type : répétitions, ou durée en secondes / minutes (gainage, course…).</div>
       ${exList.map(e => `<div class="ex-edit"><span>${esc(e.name)}</span>
+        <select data-kind="${e.id}" aria-label="Type">${kinds.map(([v, l]) => `<option value="${v}" ${(e.kind || 'reps') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
         <button data-act="rename" data-id="${e.id}">Renommer</button>
         <button data-act="delex" data-id="${e.id}" class="danger">Suppr.</button></div>`).join('')}
     </div>
@@ -629,8 +910,7 @@ function importData(file) {
       const d = JSON.parse(reader.result);
       if (!d || !Array.isArray(d.exercises) || !Array.isArray(d.sets)) throw new Error('format');
       if (!confirm(`Remplacer tes données actuelles par cette sauvegarde (${d.sets.length} séries) ?`)) return;
-      d.settings = Object.assign({ step: 2.5 }, d.settings);
-      db = d; save(); ui.exId = null; ui.progEx = null;
+      db = migrate(d); save(); ui.exId = null; ui.editProg = null; ui.progEx = null;
       toast('Sauvegarde importée ✓'); render();
     } catch (e) { alert('Ce fichier n’est pas une sauvegarde Muscu valide.'); }
   };
@@ -638,13 +918,34 @@ function importData(file) {
 }
 
 // ---------- Chrono de repos ----------
+// Pendant un programme : compte à rebours selon le repos prévu, vibre à la fin.
+// Sinon : temps écoulé depuis la dernière série.
 function updateTimer() {
   const el = $('#timer');
-  const last = db.sets.reduce((m, s) => Math.max(m, s.t), 0);
-  const sec = Math.floor((Date.now() - last) / 1000);
-  if (!last || sec > 15 * 60 || ui.tab !== 'seance') { el.hidden = true; return; }
+  const last = db.sets.reduce((m, s) => (!m || s.t > m.t ? s : m), null);
+  const sec = last ? Math.floor((Date.now() - last.t) / 1000) : 0;
+  if (!last || sec > 15 * 60 || (ui.tab !== 'seance' && ui.tab !== 'programmes') || ui.editProg) { el.hidden = true; return; }
+  let rest = 0;
+  if (db.active && last.t >= db.active.start) {
+    const p = progById(db.active.progId);
+    const it = p && p.items.find(i => i.exId === last.exId);
+    rest = it ? parseRest(it.rest) : 0;
+  }
   el.hidden = false;
-  el.textContent = '⏱ ' + Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+  if (rest && sec < rest) {
+    el.classList.remove('ready');
+    el.textContent = '⏳ Repos ' + mmss(rest - sec);
+  } else if (rest) {
+    el.classList.add('ready');
+    el.textContent = '✅ Go ! +' + mmss(sec - rest);
+    if (ui.alerted !== last.id) {
+      ui.alerted = last.id;
+      if (sec - rest < 5) vibrate([300, 150, 300]);
+    }
+  } else {
+    el.classList.remove('ready');
+    el.textContent = '⏱ ' + mmss(sec);
+  }
 }
 setInterval(updateTimer, 1000);
 
@@ -652,29 +953,61 @@ setInterval(updateTimer, 1000);
 document.querySelector('nav').addEventListener('click', e => {
   const b = e.target.closest('button[data-tab]');
   if (!b) return;
-  if (ui.tab === b.dataset.tab && b.dataset.tab === 'seance') ui.exId = null;
   ui.tab = b.dataset.tab;
+  ui.exId = null; ui.editProg = null;
   render();
   window.scrollTo(0, 0);
 });
 
 $('#back').addEventListener('click', () => {
-  if (history.state && history.state.ex) history.back();
-  else { ui.exId = null; render(); }
+  if (history.state && history.state.sub) history.back();
+  else closeSub();
 });
 
 $('#app').addEventListener('input', e => {
-  if (e.target.id === 'search') {
-    ui.search = e.target.value;
-    const pos = e.target.selectionStart;
+  const t = e.target;
+  if (t.id === 'search') {
+    ui.search = t.value;
+    const pos = t.selectionStart;
     viewPicker();
     const s = $('#search'); s.focus(); try { s.setSelectionRange(pos, pos); } catch (_) {}
+    return;
+  }
+  // Édition de programme : enregistrement au fil de la frappe
+  const p = ui.editProg && progById(ui.editProg);
+  if (!p) return;
+  if (t.dataset.pf) { p[t.dataset.pf] = t.value; save(); }
+  if (t.dataset.if && t.tagName !== 'SELECT') {
+    const it = p.items[+t.dataset.i];
+    if (t.dataset.if === 'sets') { const n = Math.round(num(t.value)); if (n >= 1) it.sets = Math.min(n, 20); }
+    else it[t.dataset.if] = t.value.trim();
+    save();
   }
 });
 
 $('#app').addEventListener('change', e => {
-  if (e.target.id === 'progEx') { ui.progEx = e.target.value; render(); }
-  if (e.target.id === 'w' || e.target.id === 'r') { readInputs(); }
+  const t = e.target;
+  if (t.id === 'progEx') { ui.progEx = t.value; render(); }
+  if (t.id === 'w' || t.id === 'r') readInputs();
+  if (t.dataset.kind) {
+    const ex = exById(t.dataset.kind);
+    if (ex) { if (t.value === 'reps') delete ex.kind; else ex.kind = t.value; save(); }
+  }
+  const p = ui.editProg && progById(ui.editProg);
+  if (!p) return;
+  if (t.dataset.if === 'exId') { p.items[+t.dataset.i].exId = t.value; save(); }
+  if (t.dataset.if === 'sets') render(); // corrige l'affichage si la saisie était invalide
+  if (t.id === 'addItem' && t.value) {
+    let exId = t.value;
+    if (exId === '__new') {
+      const name = (prompt('Nom du nouvel exercice :') || '').trim();
+      if (!name) { t.value = ''; return; }
+      exId = findOrCreateEx(db, name).id;
+    }
+    p.items.push({ exId, sets: 3, target: '8–12', rest: '90 s', tip: '' });
+    save(); render();
+    window.scrollTo(0, document.body.scrollHeight);
+  }
 });
 
 $('#app').addEventListener('focusin', e => {
@@ -695,13 +1028,15 @@ $('#app').addEventListener('click', e => {
   const t = e.target.closest('[data-act]');
   if (!t) return;
   const act = t.dataset.act, id = t.dataset.id;
+  const p = ui.editProg && progById(ui.editProg);
+  const i = +t.dataset.i;
   switch (act) {
     case 'open': ui.search = ''; openExercise(id); break;
     case 'create': {
       const name = ui.search.trim();
       if (!name) return;
-      const ex = { id: uid(), name };
-      db.exercises.push(ex); save();
+      const ex = findOrCreateEx(db, name);
+      save();
       ui.search = ''; openExercise(ex.id);
       break;
     }
@@ -714,14 +1049,22 @@ $('#app').addEventListener('click', e => {
     }
     case 'r-': case 'r+': {
       readInputs();
-      ui.r = act === 'r+' ? ui.r + 1 : Math.max(0, ui.r - 1);
+      const st = kindOf(ui.exId) === 's' ? 5 : 1;
+      ui.r = act === 'r+' ? ui.r + st : Math.max(0, ui.r - st);
       $('#r').value = ui.r; vibrate(10);
       break;
     }
     case 'add': addSet(); break;
+    case 'next': {
+      const ctx = progCtx();
+      const nx = ctx && ctx.p.items[ctx.i + 1];
+      if (nx) { ui.exId = nx.exId; prefill(nx.exId); render(); window.scrollTo(0, 0); }
+      else $('#back').click();
+      break;
+    }
     case 'reuse': {
       const s = db.sets.find(x => x.id === id);
-      if (s) { ui.w = s.w; ui.r = s.r; $('#w').value = fmtNum(s.w); $('#r').value = s.r; }
+      if (s) { ui.w = s.w; ui.r = s.r; if ($('#w')) $('#w').value = fmtNum(s.w); $('#r').value = s.r; }
       break;
     }
     case 'del': {
@@ -731,6 +1074,34 @@ $('#app').addEventListener('click', e => {
       }
       break;
     }
+    case 'launch': launch(id); break;
+    case 'finish': finishRun(); break;
+    case 'cancelrun':
+      if (confirm('Annuler la séance en cours ? Les séries déjà notées restent dans l’historique.')) {
+        db.active = null; save(); render();
+      }
+      break;
+    case 'pnew': {
+      const np = { id: uid(), name: 'Nouveau programme', note: '', items: [] };
+      db.programs.push(np); save();
+      ui.editProg = np.id; pushSub(); render(); window.scrollTo(0, 0);
+      break;
+    }
+    case 'pedit': ui.editProg = id; pushSub(); render(); window.scrollTo(0, 0); break;
+    case 'pdone': $('#back').click(); break;
+    case 'pdel':
+      if (p && confirm(`Supprimer le programme « ${p.name} » ? Tes séries déjà notées sont conservées.`)) {
+        db.programs = db.programs.filter(x => x.id !== p.id);
+        if (db.active && db.active.progId === p.id) db.active = null;
+        save(); $('#back').click();
+      }
+      break;
+    case 'iup': case 'idown': {
+      const j = act === 'iup' ? i - 1 : i + 1;
+      if (p && j >= 0 && j < p.items.length) { [p.items[i], p.items[j]] = [p.items[j], p.items[i]]; save(); render(); }
+      break;
+    }
+    case 'idel': if (p) { p.items.splice(i, 1); save(); render(); } break;
     case 'step': db.settings.step = Number(t.dataset.v); save(); render(); break;
     case 'export': exportData(); break;
     case 'import': $('#importFile').click(); break;
@@ -743,16 +1114,17 @@ $('#app').addEventListener('click', e => {
     case 'delex': {
       const ex = exById(id);
       const n = db.sets.filter(s => s.exId === id).length;
-      if (ex && confirm(`Supprimer « ${ex.name} »${n ? ` et ses ${n} séries` : ''} ?`)) {
+      if (ex && confirm(`Supprimer « ${ex.name} »${n ? ` et ses ${n} séries` : ''} ? Il sera aussi retiré des programmes.`)) {
         db.exercises = db.exercises.filter(e => e.id !== id);
         db.sets = db.sets.filter(s => s.exId !== id);
+        db.programs.forEach(pr => { pr.items = pr.items.filter(it => it.exId !== id); });
         save(); render();
       }
       break;
     }
     case 'wipe':
-      if (confirm('Effacer TOUTES tes séances et exercices ? Cette action est définitive.')) {
-        db = freshDb(); save(); ui.exId = null; ui.progEx = null; render(); toast('Données effacées');
+      if (confirm('Effacer TOUTES tes séances, exercices et programmes ? Cette action est définitive.')) {
+        db = freshDb(); save(); ui.exId = null; ui.editProg = null; ui.progEx = null; render(); toast('Données effacées');
       }
       break;
   }
@@ -765,7 +1137,7 @@ $('#importFile').addEventListener('change', e => {
 });
 
 // Bouton retour Android / geste retour
-window.addEventListener('popstate', () => { if (ui.exId) { ui.exId = null; render(); } });
+window.addEventListener('popstate', () => { if (ui.exId || ui.editProg) closeSub(); });
 
 // Synchronisation si l'app est ouverte dans deux onglets
 window.addEventListener('storage', e => { if (e.key === STORE_KEY) { db = load(); render(); } });
@@ -773,6 +1145,12 @@ window.addEventListener('storage', e => { if (e.key === STORE_KEY) { db = load()
 render();
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  // Recharge une fois quand une nouvelle version de l'app vient d'être installée
+  let hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController) location.reload();
+    hadController = true;
+  });
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 </script>
