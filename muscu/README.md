@@ -27,6 +27,10 @@ et garde tes données **sur ton téléphone** (rien n'est envoyé sur internet).
 - **Records** : 🏆 quand tu dépasses ta charge max sur un exercice.
 - **Badges** (onglet Progrès) : 23 défis à débloquer (séances, records, tonnes soulevées,
   semaines d'affilée…), avec leur progression, et une célébration quand tu en gagnes un.
+- **Récompenses** (Progrès → carte niveau) : des XP à chaque série, record, séance, badge et
+  défi ; des niveaux qui débloquent des thèmes de couleur, des avatars, des titres et des
+  célébrations (confettis, feu d'artifice, pluie d'or) ; 3 défis de la semaine ; un bonus de
+  régularité (×1,5 dès 4 semaines d'affilée, ×2 dès 8) et des jokers qui sauvent ta série.
 - **Historique** : toutes tes séances, jour par jour, avec le tonnage soulevé.
 - **Progrès** : courbe de la charge max par séance, record, 1RM estimé.
 - **Réglages** : pas des boutons (0,5 / 1 / 1,25 / 2,5 / 5 kg), renommer / supprimer des

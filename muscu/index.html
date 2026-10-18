@@ -286,6 +286,61 @@
   .badge-tile .bp.ok { color: var(--gold); }
   .badge-tile .bar { height: 4px; background: var(--surface-2); border-radius: 999px; margin-top: 6px; overflow: hidden; }
   .badge-tile .bar > div { height: 100%; background: var(--accent); }
+  /* Thèmes de couleur débloqués avec les niveaux */
+  :root[data-accent="green"] { --accent: #3ddc84; --accent-ink: #04170c; }
+  :root[data-accent="violet"] { --accent: #b197fc; --accent-ink: #14072e; }
+  :root[data-accent="red"] { --accent: #ff6b6b; --accent-ink: #2a0505; }
+  @media (prefers-color-scheme: light) {
+    :root[data-accent="green"] { --accent: #16a34a; --accent-ink: #ffffff; }
+    :root[data-accent="violet"] { --accent: #7c3aed; --accent-ink: #ffffff; }
+    :root[data-accent="red"] { --accent: #dc2626; --accent-ink: #ffffff; }
+  }
+  :root[data-accent="gold"] {
+    --bg: #000000; --surface: #0f0f0f; --surface-2: #1a1a1a; --border: #2e2918;
+    --text: #f6f1e3; --muted: #a39c86; --accent: #f5c542; --accent-ink: #1a1200;
+    --danger: #ff6b6b; --gold: #f5c542;
+  }
+
+  /* Profil, niveaux, récompenses */
+  .avatar {
+    width: 56px; height: 56px; border-radius: 50%; flex: none; font-size: 34px;
+    display: flex; align-items: center; justify-content: center; background: var(--surface-2);
+  }
+  .hero .avatar { width: 72px; height: 72px; font-size: 44px; margin: 0 auto 6px; }
+  .xpbar { height: 8px; background: var(--surface-2); border-radius: 999px; overflow: hidden; margin: 6px 0 4px; }
+  .xpbar > div { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--gold)); }
+  .xp-gain { font-size: 22px; font-weight: 800; color: var(--accent); margin-top: 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    padding: 8px 12px; border-radius: 999px; font-size: 14px; font-weight: 600;
+    background: var(--surface-2); border: 1px solid var(--border);
+  }
+  .chip[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  .chip.locked, .swatch.locked, .av.locked { opacity: .4; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 12px; }
+  .swatch { width: 56px; text-align: center; font-size: 11px; color: var(--muted); }
+  .swatch .dot {
+    width: 44px; height: 44px; border-radius: 50%; margin: 0 auto 4px; border: 3px solid transparent;
+    display: flex; align-items: center; justify-content: center; font-size: 15px;
+  }
+  .swatch[aria-pressed="true"] .dot { border-color: var(--text); }
+  .avatars { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+  .av { font-size: 26px; padding: 6px 0; border-radius: 12px; background: var(--surface-2); border: 2px solid transparent; }
+  .av[aria-pressed="true"] { border-color: var(--accent); }
+  .av.locked { filter: grayscale(1); }
+  .challenge { padding: 10px 0; border-top: 1px solid var(--border); }
+  .challenge:first-of-type { border-top: 0; padding-top: 4px; }
+  .challenge .top { display: flex; justify-content: space-between; gap: 8px; font-size: 15px; }
+  .challenge .xp { font-weight: 700; color: var(--accent); white-space: nowrap; }
+  .challenge.ok .top span:first-child { text-decoration: line-through; color: var(--muted); }
+  .lvl-row { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); font-size: 14px; }
+  .lvl-row:first-of-type { border-top: 0; }
+  .lvl-row .lv { width: 52px; flex: none; font-weight: 700; color: var(--muted); }
+  .lvl-row.ok .lv { color: var(--accent); }
+  .lvl-row.ok { color: var(--muted); }
+  .lvl-row.next { font-weight: 600; }
+  .fx { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 30; }
+  .card h4 { margin: 0 0 10px; font-size: 16px; }
   .badge-icons { font-size: 22px; letter-spacing: 2px; white-space: nowrap; overflow: hidden; }
   .card li { margin: 4px 0; }
 </style>
@@ -398,6 +453,9 @@ function migrate(d) {
   }
   if (!Array.isArray(d.runs)) d.runs = [];
   if (!d.badges || typeof d.badges !== 'object') d.badges = {};
+  if (!d.challenges || typeof d.challenges !== 'object') d.challenges = {};
+  if (!Array.isArray(d.jokersUsed)) d.jokersUsed = [];
+  if (!d.profile || typeof d.profile !== 'object') d.profile = {};
   if (d.active && (Date.now() - d.active.start > 12 * 3600e3 || !d.programs.some(p => p.id === d.active.progId))) d.active = null;
   d.v = 2;
   return d;
@@ -529,6 +587,21 @@ function toast(msg, ms) {
   toastTimer = setTimeout(() => el.classList.remove('show'), ms || 1800);
 }
 
+// Messages importants (badge, niveau, défi) affichés les uns après les autres
+const annQueue = [];
+let annBusy = false;
+function announce(msgs) {
+  annQueue.push(...msgs);
+  if (!annBusy) nextAnnounce();
+}
+function nextAnnounce() {
+  const m = annQueue.shift();
+  annBusy = !!m;
+  if (!m) return;
+  toast(m, 2800);
+  setTimeout(nextAnnounce, 3000);
+}
+
 // ---------- Badges ----------
 // [id, icône, nom, description, statistique suivie, objectif]
 const BADGES = [
@@ -557,6 +630,49 @@ const BADGES = [
   ['night', '🌙', 'Oiseau de nuit', 'S’entraîner après 22 h', 'night', 1]
 ].map(([id, icon, name, desc, key, goal]) => ({ id, icon, name, desc, key, goal }));
 
+// ---------- Récompenses : XP, niveaux, défis, bonus de régularité ----------
+// XP : +10 par série, +100 par record, +50 par séance de programme terminée (× bonus de régularité),
+// +200 par badge, + XP des défis de la semaine.
+const XP = { set: 10, pr: 100, run: 50, badge: 200 };
+const xpTotalFor = L => L <= 1 ? 0 : Math.round(75 * Math.pow(L - 1, 2.2) / 10) * 10;
+// Bonus de régularité selon le nombre de semaines d'affilée
+const streakMult = run => run >= 8 ? 2 : run >= 4 ? 1.5 : 1;
+
+// Récompenses débloquées avec les niveaux : [valeur, nom, niveau]
+const THEMES = [
+  ['blue', 'Bleu', 1, '#4aa8ff'], ['green', 'Vert', 3, '#3ddc84'], ['violet', 'Violet', 10, '#b197fc'],
+  ['red', 'Rouge', 20, '#ff6b6b'], ['gold', 'Noir et or', 30, 'linear-gradient(135deg, #000 50%, #f5c542 50%)']
+];
+const AVATARS = [['🥚', 'Œuf', 1], ['🐣', 'Poussin', 2], ['🐺', 'Loup', 7], ['🦁', 'Lion', 15], ['🦍', 'Gorille', 25], ['🐉', 'Dragon', 30]];
+const TITLES = [['Nouveau', 'Nouveau', 1], ['Débutant', 'Débutant', 2], ['Régulier', 'Régulier', 7], ['Guerrier', 'Guerrier', 15], ['Bête de salle', 'Bête de salle', 25], ['Légende', 'Légende', 30]];
+const EFFECTS = [['none', 'Aucun', 1], ['confetti', 'Confettis', 5], ['fireworks', 'Feu d’artifice', 20], ['gold', 'Pluie d’or', 30]];
+const JOKER_EVERY = 5; // 1 joker tous les 5 niveaux
+
+// Défis de la semaine : un de chaque groupe, tirés selon la semaine
+const CHALLENGES = [
+  [
+    { id: 'sess2', text: 'Faire 2 séances', key: 'sessions', goal: 2, xp: 100 },
+    { id: 'sess3', text: 'Faire 3 séances', key: 'sessions', goal: 3, xp: 150 },
+    { id: 'prog2', text: 'Terminer 2 séances de programme', key: 'runs', goal: 2, xp: 120 }
+  ],
+  [
+    { id: 'pr1', text: 'Battre 1 record', key: 'prs', goal: 1, xp: 150 },
+    { id: 'vol5', text: 'Soulever 5 000 kg', key: 'vol', goal: 5000, xp: 120 },
+    { id: 'sets40', text: 'Faire 40 séries', key: 'sets', goal: 40, xp: 120 },
+    { id: 'reps300', text: 'Faire 300 répétitions', key: 'reps', goal: 300, xp: 100 }
+  ],
+  [
+    { id: 'hold120', text: 'Cumuler 2 min d’exercices chronométrés', key: 'holdSec', goal: 120, xp: 100 },
+    { id: 'var8', text: 'Faire 8 exercices différents', key: 'variety', goal: 8, xp: 100 },
+    { id: 'diff2', text: 'Faire 2 programmes différents', key: 'progs', goal: 2, xp: 150 }
+  ]
+];
+const challengeById = id => CHALLENGES.flat().find(c => c.id === id);
+function challengesFor(wk) {
+  const n = Math.round(wk / 6048e5);
+  return CHALLENGES.map((g, i) => g[Math.abs(n * (i * 2 + 3) + i) % g.length]);
+}
+
 // Lundi de la semaine d'une date (pour compter les semaines d'affilée)
 function weekKey(t) {
   const d = new Date(t);
@@ -564,10 +680,12 @@ function weekKey(t) {
   d.setDate(d.getDate() - (d.getDay() + 6) % 7);
   return d.getTime();
 }
+const nextWeek = wk => weekKey(wk + 7.5 * 864e5);
 
+// Toutes les statistiques (badges, XP, défis) en un seul passage sur l'historique
 function computeStats() {
   const sets = [...db.sets].sort((a, b) => a.t - b.t);
-  const days = new Map(), best = new Map();
+  const days = new Map(), best = new Map(), prIds = new Set();
   const st = { vol: 0, prs: 0, maxHold: 0, maxReps: 0, early: 0, night: 0 };
   for (const s of sets) {
     const k = kindOf(s.exId);
@@ -578,30 +696,68 @@ function computeStats() {
     days.set(dayKey(s.t), day);
     if (k === 'reps') {
       st.maxReps = Math.max(st.maxReps, s.r);
-      if (best.has(s.exId) && s.w > best.get(s.exId)) st.prs++;
+      if (best.has(s.exId) && s.w > best.get(s.exId)) { st.prs++; prIds.add(s.id); }
       best.set(s.exId, Math.max(best.has(s.exId) ? best.get(s.exId) : 0, s.w));
     } else if (k === 's') st.maxHold = Math.max(st.maxHold, s.r);
     const h = new Date(s.t).getHours();
     if (h >= 4 && h < 8) st.early = 1;
     if (h >= 22 || h < 4) st.night = 1;
   }
-  const weeks = [...new Set(sets.map(s => weekKey(s.t)))].sort((a, b) => a - b);
+  // Semaines actives (les semaines sauvées par un joker comptent)
+  const weeks = [...new Set([...sets.map(s => weekKey(s.t)), ...db.jokersUsed])].sort((a, b) => a - b);
+  const weekRun = new Map();
   let run = 0, prev = null;
   st.streak = 0;
   for (const w of weeks) {
-    run = prev !== null && Math.round((w - prev) / 6048e5) === 1 ? run + 1 : 1;
+    run = prev !== null && nextWeek(prev) === w ? run + 1 : 1;
+    weekRun.set(w, run);
     st.streak = Math.max(st.streak, run);
     prev = w;
   }
-  // Série en cours : compte encore si la dernière séance date de cette semaine ou de la précédente
-  st.curStreak = prev !== null && Math.round((weekKey(Date.now()) - prev) / 6048e5) <= 1 ? run : 0;
+  // Série en cours : compte encore si la dernière semaine active est celle-ci ou la précédente
+  const now = weekKey(Date.now());
+  st.curStreak = prev !== null && (prev === now || nextWeek(prev) === now) ? run : 0;
+  st.mult = streakMult(st.curStreak);
   const dayVals = [...days.values()];
   st.sessions = days.size;
   st.dayVol = Math.max(0, ...dayVals.map(d => d.vol));
   st.daySets = Math.max(0, ...dayVals.map(d => d.n));
   st.runs = db.runs.length;
   st.progsDone = new Set(db.runs.map(r => r.progId)).size;
+  st.prIds = prIds;
+  st.lastWeek = prev;
+  st.weekRun = weekRun;
+
+  // XP
+  const multAt = t => streakMult(weekRun.get(weekKey(t)) || 1);
+  let xp = 0;
+  for (const s of sets) xp += (XP.set + (prIds.has(s.id) ? XP.pr : 0)) * multAt(s.t);
+  for (const r of db.runs) xp += XP.run * multAt(r.start);
+  xp += XP.badge * Object.keys(db.badges).length;
+  for (const ids of Object.values(db.challenges)) ids.forEach(id => { const c = challengeById(id); if (c) xp += c.xp; });
+  st.xp = Math.round(xp);
+  let level = 1;
+  while (st.xp >= xpTotalFor(level + 1)) level++;
+  st.level = level;
+  st.into = st.xp - xpTotalFor(level);
+  st.need = xpTotalFor(level + 1) - xpTotalFor(level);
+  st.jokers = Math.max(0, Math.floor(level / JOKER_EVERY) - db.jokersUsed.length);
   return st;
+}
+
+// Chiffres d'une semaine pour les défis
+function weekStats(wk, st) {
+  const sets = db.sets.filter(s => weekKey(s.t) === wk);
+  const runs = db.runs.filter(r => weekKey(r.start) === wk);
+  const ws = { sessions: new Set(sets.map(s => dayKey(s.t))).size, sets: sets.length, reps: 0, vol: 0, holdSec: 0,
+    prs: sets.filter(s => st.prIds.has(s.id)).length, variety: new Set(sets.map(s => s.exId)).size,
+    runs: runs.length, progs: new Set(runs.map(r => r.progId)).size };
+  for (const s of sets) {
+    const k = kindOf(s.exId);
+    if (k === 'reps') { ws.reps += s.r; ws.vol += s.w * s.r; }
+    else ws.holdSec += s.r * (k === 'min' ? 60 : 1);
+  }
+  return ws;
 }
 
 // Enregistre les badges nouvellement obtenus. Sans célébration (chargement, import),
@@ -609,20 +765,137 @@ function computeStats() {
 function syncBadges(celebrate) {
   const st = computeStats();
   const fresh = BADGES.filter(b => st[b.key] >= b.goal && !db.badges[b.id]);
-  if (!fresh.length) return fresh;
   fresh.forEach(b => { db.badges[b.id] = celebrate ? Date.now() : 1; });
-  save();
-  if (celebrate) {
-    vibrate([100, 60, 100, 60, 250]);
-    toast('🏅 Badge débloqué : ' + fresh.map(b => b.icon + ' ' + b.name).join(', ') + ' !', 3500);
-  }
   return fresh;
+}
+
+function syncChallenges() {
+  const st = computeStats();
+  const wk = weekKey(Date.now());
+  const ws = weekStats(wk, st);
+  const done = db.challenges[wk] || [];
+  const fresh = challengesFor(wk).filter(c => ws[c.key] >= c.goal && !done.includes(c.id));
+  if (fresh.length) db.challenges[wk] = done.concat(fresh.map(c => c.id));
+  return fresh;
+}
+
+// Une semaine ratée est couverte par un joker, si la série en valait la peine (2 semaines ou plus)
+function useJokers() {
+  const st = computeStats();
+  if (st.lastWeek === null) return 0;
+  const now = weekKey(Date.now());
+  const gap = [];
+  for (let w = nextWeek(st.lastWeek); w < now; w = nextWeek(w)) gap.push(w);
+  if (!gap.length || gap.length > st.jokers || (st.weekRun.get(st.lastWeek) || 0) < 2) return 0;
+  db.jokersUsed.push(...gap);
+  return gap.length;
+}
+
+function rewardsAt(L) {
+  const r = [];
+  AVATARS.filter(a => a[2] === L).forEach(a => r.push(`${a[0]} Avatar ${a[1]}`));
+  TITLES.filter(a => a[2] === L).forEach(a => r.push(`🏷️ Titre « ${a[1]} »`));
+  THEMES.filter(a => a[2] === L).forEach(a => r.push(`🎨 Thème ${a[1]}`));
+  EFFECTS.filter(a => a[2] === L && a[0] !== 'none').forEach(a => r.push(`🎉 ${a[1]}`));
+  if (L % JOKER_EVERY === 0) r.push('🃏 1 joker');
+  return r;
+}
+
+// Synchronise badges, défis, jokers et niveau. Renvoie les messages à annoncer.
+function syncProgress(celebrate) {
+  const msgs = [];
+  syncBadges(celebrate).forEach(b => msgs.push(`🏅 Badge débloqué : ${b.icon} ${b.name}`));
+  syncChallenges().forEach(c => msgs.push(`🎯 Défi réussi : ${c.text} (+${c.xp} XP)`));
+  const used = useJokers();
+  const jokerMsg = `🃏 Joker utilisé : ta série de semaines est sauvée !`;
+  if (used) msgs.push(jokerMsg);
+  const st = computeStats();
+  const before = db.level || 0;
+  if (before && st.level > before) {
+    const gained = [];
+    for (let L = before + 1; L <= st.level; L++) gained.push(...rewardsAt(L));
+    msgs.push(`⬆️ Niveau ${st.level} !${gained.length ? ' Débloqué : ' + gained.join(', ') : ''}`);
+  }
+  db.level = st.level;
+  save();
+  if (!celebrate) return used ? [jokerMsg] : [];
+  if (msgs.length) vibrate([100, 60, 100, 60, 250]);
+  return msgs;
+}
+
+// Choix du profil : la valeur choisie si elle est débloquée, sinon la meilleure débloquée
+function equipped(list, choice, level) {
+  const open = list.filter(x => x[2] <= level);
+  return (open.find(x => x[0] === choice) || open[open.length - 1])[0];
+}
+function profile(st) {
+  const p = db.profile, L = st.level;
+  return { theme: equipped(THEMES, p.theme || 'blue', L), avatar: equipped(AVATARS, p.avatar, L),
+    title: equipped(TITLES, p.title, L), effect: equipped(EFFECTS, p.effect, L) };
+}
+function applyTheme() {
+  const t = profile(computeStats()).theme;
+  if (t === 'blue') delete document.documentElement.dataset.accent;
+  else document.documentElement.dataset.accent = t;
+}
+
+// ---------- Célébrations (confettis, feu d'artifice, pluie d'or) ----------
+function celebrate(kind) {
+  kind = kind || profile(computeStats()).effect;
+  if (kind === 'none') return;
+  try { if (matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch (e) {}
+  const c = document.createElement('canvas');
+  c.className = 'fx';
+  const dpr = window.devicePixelRatio || 1, W = innerWidth, H = innerHeight;
+  c.width = W * dpr; c.height = H * dpr;
+  document.body.appendChild(c);
+  const g = c.getContext('2d');
+  g.scale(dpr, dpr);
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#4aa8ff';
+  const colors = kind === 'gold' ? ['#ffd700', '#f5c542', '#fff3b0', '#e6a800'] : [accent, '#ffc542', '#ff6b6b', '#3ddc84', '#b197fc', '#ffffff'];
+  const parts = [];
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const pick = a => a[Math.floor(Math.random() * a.length)];
+  if (kind === 'confetti') {
+    for (let i = 0; i < 140; i++) parts.push({ x: rnd(0, W), y: rnd(-H * 0.4, -10), vx: rnd(-1.5, 1.5), vy: rnd(2, 5), g: 0.05, rot: rnd(0, 6), vr: rnd(-0.2, 0.2), w: rnd(6, 10), h: rnd(4, 7), c: pick(colors), shape: 'rect', delay: 0 });
+  } else if (kind === 'fireworks') {
+    for (let b = 0; b < 5; b++) {
+      const cx = rnd(W * 0.15, W * 0.85), cy = rnd(H * 0.15, H * 0.45), col = pick(colors), delay = b * 18;
+      for (let i = 0; i < 60; i++) {
+        const a = rnd(0, Math.PI * 2), sp = rnd(1.5, 5);
+        parts.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, g: 0.05, w: 3, c: col, shape: 'dot', delay, fade: true });
+      }
+    }
+  } else {
+    for (let i = 0; i < 160; i++) parts.push({ x: rnd(0, W), y: rnd(-H * 0.6, -10), vx: rnd(-0.4, 0.4), vy: rnd(1.5, 3.5), g: 0.02, w: rnd(2, 5), c: pick(colors), shape: 'star', delay: 0, tw: rnd(0, 6) });
+  }
+  let frame = 0;
+  const total = 150;
+  (function step() {
+    g.clearRect(0, 0, W, H);
+    for (const p of parts) {
+      if (frame < p.delay) continue;
+      p.vy += p.g; p.x += p.vx; p.y += p.vy;
+      if (p.vr) p.rot += p.vr;
+      const life = 1 - (frame - p.delay) / (total - p.delay);
+      g.globalAlpha = p.fade ? Math.max(0, life) : Math.min(1, life * 3);
+      g.fillStyle = p.c;
+      if (p.shape === 'rect') {
+        g.save(); g.translate(p.x, p.y); g.rotate(p.rot); g.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); g.restore();
+      } else {
+        const r = p.shape === 'star' ? p.w * (0.6 + 0.4 * Math.abs(Math.sin(frame / 6 + p.tw))) : p.w;
+        g.beginPath(); g.arc(p.x, p.y, r, 0, Math.PI * 2); g.fill();
+      }
+    }
+    if (++frame < total) requestAnimationFrame(step);
+    else c.remove();
+  })();
 }
 
 function vibrate(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
 
 // ---------- État de l'interface ----------
-const ui = { tab: db.active ? 'programmes' : 'seance', exId: null, editProg: null, summary: null, badges: false, chrono: null, search: '', w: 0, r: 10, progEx: null, alerted: null };
+const ui = { tab: db.active ? 'programmes' : 'seance', exId: null, editProg: null, summary: null, badges: false, rewards: false, chrono: null, search: '', w: 0, r: 10, progEx: null, alerted: null };
 
 // ---------- Rendu ----------
 function render() {
@@ -630,7 +903,7 @@ function render() {
     if (b.dataset.tab === ui.tab) b.setAttribute('aria-current', 'page');
     else b.removeAttribute('aria-current');
   });
-  $('#back').hidden = !(ui.exId || ui.editProg || ui.summary || ui.badges);
+  $('#back').hidden = !(ui.exId || ui.editProg || ui.summary || ui.badges || ui.rewards);
   const views = {
     seance: viewPicker,
     programmes: () => ui.editProg ? viewProgEdit() : db.active ? viewRun() : viewPrograms(),
@@ -638,6 +911,7 @@ function render() {
   };
   if (ui.summary) viewSummary();
   else if (ui.badges) viewBadges();
+  else if (ui.rewards) viewRewards();
   else if (ui.exId && (ui.tab === 'seance' || ui.tab === 'programmes')) viewExercise();
   else views[ui.tab]();
   updateTimer();
@@ -651,6 +925,7 @@ function closeSub() {
   if (ui.exId) ui.exId = null;
   else if (ui.summary) ui.summary = null;
   else if (ui.badges) ui.badges = false;
+  else if (ui.rewards) ui.rewards = false;
   else ui.editProg = null;
   render();
 }
@@ -825,11 +1100,14 @@ function recordSet(exId, w, r) {
   save();
   vibrate(30);
   const ctx = progCtx();
-  if (hadSets && w > prevMax) toast('🏆 Nouveau record : ' + fmtW(w) + ' !');
-  else if (ctx && ctx.item.exId === exId && runSets(exId).length === ctx.item.sets) toast('Exercice terminé ✓');
-  else toast('Série enregistrée ✓');
-  syncBadges(true);
+  const isPR = hadSets && w > prevMax;
+  let msg = 'Série enregistrée ✓';
+  if (isPR) msg = '🏆 Nouveau record : ' + fmtW(w) + ' !';
+  else if (ctx && ctx.item.exId === exId && runSets(exId).length === ctx.item.sets) msg = 'Exercice terminé ✓';
+  const extra = syncProgress(true);
+  if (extra.length) announce([msg, ...extra]); else toast(msg);
   render();
+  if (isPR || extra.length) celebrate();
 }
 
 // ---------- Chrono (gainage, killy, course…) ----------
@@ -948,7 +1226,7 @@ function viewRun() {
 function launch(id) {
   const p = progById(id);
   if (!p || !p.items.length) { toast('Ajoute d’abord des exercices à ce programme'); return; }
-  db.active = { progId: id, start: Date.now() };
+  db.active = { progId: id, start: Date.now(), xpStart: computeStats().xp };
   save();
   openExercise(p.items[0].exId);
 }
@@ -959,15 +1237,17 @@ function finishRun() {
   const total = p.items.reduce((a, it) => a + it.sets, 0);
   const done = p.items.reduce((a, it) => a + Math.min(runSets(it.exId).length, it.sets), 0);
   if (done < total && !confirm(`Il reste ${total - done} série(s) prévue(s). Terminer quand même ?`)) return;
-  const start = db.active.start;
+  const start = db.active.start, xpStart = db.active.xpStart;
   const end = Math.max(start, ...db.sets.filter(s => s.t >= start).map(s => s.t));
   db.active = null;
   if (count) {
     p.lastDone = Date.now();
     db.runs.push({ progId: p.id, start, end });
-    syncBadges(true);
-    ui.summary = { progId: p.id, start, end, finished: true, badgeTo: Date.now() };
+    const extra = syncProgress(true);
+    const xpGain = xpStart == null ? null : Math.max(0, computeStats().xp - xpStart);
+    ui.summary = { progId: p.id, start, end, finished: true, badgeTo: Date.now(), xpGain };
     pushSub();
+    if (extra.length) { announce(extra); setTimeout(() => celebrate(), 200); }
   }
   save();
   render(); window.scrollTo(0, 0);
@@ -1037,6 +1317,10 @@ function viewSummary() {
       <div class="big">${sm.finished ? '💪' : '📋'}</div>
       <div class="title">${sm.finished ? 'Séance terminée !' : esc(p ? p.name : 'Résumé de la journée')}</div>
       <div class="small muted">${sm.finished && p ? esc(p.name) + ' · ' : ''}${esc(fmtDay(dayKey(sm.start)))}</div>
+      ${sm.xpGain != null ? (() => { const st = computeStats(); return `
+        <div class="xp-gain">+${fmtNum(sm.xpGain)} XP</div>
+        <div class="xpbar"><div style="width:${Math.round(st.into / st.need * 100)}%"></div></div>
+        <div class="small muted">Niveau ${st.level} · ${fmtNum(st.into)} / ${fmtNum(st.need)} XP${st.mult > 1 ? ' · 🔥 bonus ×' + fmtNum(st.mult) : ''}</div>`; })() : ''}
     </div>
     <div class="stats">
       <div class="stat"><div class="k">Durée</div><div class="val">${fmtDur(cur.dur)}</div>${deltaDur()}</div>
@@ -1128,6 +1412,99 @@ function viewHistory() {
 }
 
 // Progression par exercice
+function profileCard() {
+  const st = computeStats(), pf = profile(st);
+  const wk = weekKey(Date.now());
+  const done = (db.challenges[wk] || []).length;
+  return `<button class="row" data-act="rewards" style="margin-bottom:8px">
+    <span class="avatar">${pf.avatar}</span>
+    <div class="grow"><div class="title">Niveau ${st.level} · ${esc(pf.title)}</div>
+      <div class="xpbar"><div style="width:${Math.round(st.into / st.need * 100)}%"></div></div>
+      <div class="sub">${fmtNum(st.into)} / ${fmtNum(st.need)} XP · 🎯 ${done}/3 défis${st.mult > 1 ? ' · 🔥 ×' + fmtNum(st.mult) : ''}${st.jokers ? ' · 🃏 ' + st.jokers : ''}</div></div>
+    <span class="chev">›</span></button>`;
+}
+
+// Écran Récompenses : niveau, défis de la semaine, personnalisation, paliers
+function viewRewards() {
+  setTitle('Récompenses');
+  const st = computeStats(), pf = profile(st), L = st.level;
+  const wk = weekKey(Date.now());
+  const ws = weekStats(wk, st);
+  const doneIds = db.challenges[wk] || [];
+  const daysLeft = Math.max(1, Math.ceil((nextWeek(wk) - Date.now()) / 864e5));
+  const chHtml = challengesFor(wk).map(c => {
+    const ok = doneIds.includes(c.id);
+    const v = Math.min(ws[c.key], c.goal);
+    const fmtV = n => c.key === 'holdSec' ? mmss(Math.floor(n)) : fmtNum(Math.floor(n));
+    return `<div class="challenge ${ok ? 'ok' : ''}">
+      <div class="top"><span>${ok ? '✅ ' : ''}${esc(c.text)}</span><span class="xp">+${c.xp} XP</span></div>
+      ${ok ? '' : `<div class="xpbar"><div style="width:${Math.round(v / c.goal * 100)}%"></div></div><div class="small muted">${fmtV(v)} / ${fmtV(c.goal)}</div>`}
+    </div>`;
+  }).join('');
+  const lockTag = lv => lv > L ? ` 🔒 ${lv}` : '';
+  const themes = THEMES.map(([id, name, lv, color]) => `
+    <button class="swatch ${lv > L ? 'locked' : ''}" data-act="pick" data-kind="theme" data-v="${id}" data-lv="${lv}" aria-pressed="${pf.theme === id}">
+      <div class="dot" style="background:${color}">${lv > L ? '🔒' : ''}</div>${esc(name)}${lv > L ? '<br>Niv. ' + lv : ''}</button>`).join('');
+  const avatars = AVATARS.map(([v, name, lv]) => `
+    <button class="av ${lv > L ? 'locked' : ''}" data-act="pick" data-kind="avatar" data-v="${v}" data-lv="${lv}" aria-pressed="${pf.avatar === v}" aria-label="${esc(name)}">${v}</button>`).join('');
+  const titles = TITLES.map(([v, name, lv]) => `
+    <button class="chip ${lv > L ? 'locked' : ''}" data-act="pick" data-kind="title" data-v="${esc(v)}" data-lv="${lv}" aria-pressed="${pf.title === v}">${esc(name)}${lockTag(lv)}</button>`).join('');
+  const effects = EFFECTS.map(([v, name, lv]) => `
+    <button class="chip ${lv > L ? 'locked' : ''}" data-act="pick" data-kind="effect" data-v="${v}" data-lv="${lv}" aria-pressed="${pf.effect === v}">${esc(name)}${lockTag(lv)}</button>`).join('');
+  let next = 0;
+  const rows = [];
+  for (let lv = 2; lv <= Math.max(30, L + 5); lv++) {
+    const r = rewardsAt(lv);
+    if (!r.length) continue;
+    const ok = lv <= L;
+    if (!ok && !next) next = lv;
+    rows.push(`<div class="lvl-row ${ok ? 'ok' : ''} ${lv === next ? 'next' : ''}"><span class="lv">${ok ? '✓' : ''} Niv. ${lv}</span><span>${r.map(esc).join(' · ')}</span></div>`);
+  }
+  $('#app').innerHTML = `
+    <div class="card hero">
+      <div class="avatar">${pf.avatar}</div>
+      <div class="title">Niveau ${L} · ${esc(pf.title)}</div>
+      <div class="xpbar"><div style="width:${Math.round(st.into / st.need * 100)}%"></div></div>
+      <div class="small muted">${fmtNum(st.into)} / ${fmtNum(st.need)} XP · encore ${fmtNum(st.need - st.into)} XP avant le niveau ${L + 1}</div>
+      <div class="small" style="margin-top:8px">${st.mult > 1 ? `🔥 Bonus régularité <b>×${fmtNum(st.mult)}</b> (${st.curStreak} semaines d’affilée)` : `🔥 ${st.curStreak} semaine${st.curStreak > 1 ? 's' : ''} d’affilée · bonus ×1,5 dès 4 semaines`}</div>
+      <div class="small" style="margin-top:4px">🃏 ${st.jokers} joker${st.jokers > 1 ? 's' : ''} : protège${st.jokers > 1 ? 'nt' : ''} ta série si tu rates une semaine</div>
+    </div>
+
+    <div class="card">
+      <h4>🎯 Défis de la semaine · ${doneIds.length}/3</h4>
+      ${chHtml}
+      <div class="small muted" style="margin-top:6px">Nouveaux défis lundi (dans ${daysLeft} jour${daysLeft > 1 ? 's' : ''}).</div>
+    </div>
+
+    <div class="card"><h4>🎨 Thème</h4><div class="swatches">${themes}</div></div>
+    <div class="card"><h4>🙂 Avatar</h4><div class="avatars">${avatars}</div></div>
+    <div class="card"><h4>🏷️ Titre</h4><div class="chips">${titles}</div></div>
+    <div class="card"><h4>🎉 Célébration</h4>
+      <div class="small muted" style="margin-bottom:8px">Pour les records, badges, défis et niveaux.</div>
+      <div class="chips">${effects}</div>
+      ${pf.effect !== 'none' ? '<button class="secondary" data-act="tryfx">Essayer ✨</button>' : ''}
+    </div>
+
+    <button class="row" data-act="badges" style="margin-bottom:12px">
+      <div class="grow"><div class="title">🏅 Badges · ${BADGES.filter(b => db.badges[b.id]).length} / ${BADGES.length}</div></div><span class="chev">›</span></button>
+
+    <div class="section-title">Récompenses par niveau</div>
+    <div class="card">${rows.join('')}</div>
+
+    <div class="section-title">Comment gagner des XP</div>
+    <div class="card small">
+      <ul style="margin:0">
+        <li>+${XP.set} XP par série</li>
+        <li>+${XP.pr} XP par record battu</li>
+        <li>+${XP.run} XP par séance de programme terminée</li>
+        <li>+${XP.badge} XP par badge</li>
+        <li>+100 à 150 XP par défi de la semaine</li>
+        <li>Bonus régularité : ×1,5 dès 4 semaines d’affilée, ×2 dès 8 semaines (séries, records et séances)</li>
+        <li>🃏 1 joker tous les 5 niveaux : il sauve ta série si tu rates une semaine</li>
+      </ul>
+    </div>`;
+}
+
 function badgesEntry() {
   const got = BADGES.filter(b => db.badges[b.id]);
   const st = computeStats();
@@ -1166,7 +1543,7 @@ function viewProgress() {
   const done = db.exercises.filter(e => db.sets.some(s => s.exId === e.id))
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   if (!done.length) {
-    $('#app').innerHTML = badgesEntry() + `<div class="empty"><div class="big">📈</div>Enregistre quelques séries pour voir ta progression.</div>`;
+    $('#app').innerHTML = profileCard() + badgesEntry() + `<div class="empty"><div class="big">📈</div>Enregistre quelques séries pour voir ta progression.</div>`;
     return;
   }
   if (!done.some(e => e.id === ui.progEx)) {
@@ -1188,6 +1565,7 @@ function viewProgress() {
     <div class="detail">${s.sets.map(fmtSet).join(' · ')}</div></div>`).join('');
 
   $('#app').innerHTML = `
+    ${profileCard()}
     ${badgesEntry()}
     <select class="search" id="progEx">
       ${done.map(e => `<option value="${e.id}" ${e.id === ui.progEx ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}
@@ -1285,7 +1663,7 @@ function importData(file) {
       const d = JSON.parse(reader.result);
       if (!d || !Array.isArray(d.exercises) || !Array.isArray(d.sets)) throw new Error('format');
       if (!confirm(`Remplacer tes données actuelles par cette sauvegarde (${d.sets.length} séries) ?`)) return;
-      db = migrate(d); syncBadges(false); save(); ui.exId = null; ui.editProg = null; ui.summary = null; ui.badges = false; ui.progEx = null;
+      db = migrate(d); syncProgress(false); applyTheme(); save(); ui.exId = null; ui.editProg = null; ui.summary = null; ui.badges = false; ui.progEx = null;
       toast('Sauvegarde importée ✓'); render();
     } catch (e) { alert('Ce fichier n’est pas une sauvegarde Muscu valide.'); }
   };
@@ -1329,7 +1707,7 @@ document.querySelector('nav').addEventListener('click', e => {
   const b = e.target.closest('button[data-tab]');
   if (!b) return;
   ui.tab = b.dataset.tab;
-  ui.exId = null; ui.editProg = null; ui.summary = null; ui.badges = false;
+  ui.exId = null; ui.editProg = null; ui.summary = null; ui.badges = false; ui.rewards = false;
   render();
   window.scrollTo(0, 0);
 });
@@ -1435,6 +1813,16 @@ $('#app').addEventListener('click', e => {
     case 'ccancel': stopChrono(false); break;
     case 'sumclose': $('#back').click(); break;
     case 'badges': ui.badges = true; pushSub(); render(); window.scrollTo(0, 0); break;
+    case 'rewards': ui.rewards = true; pushSub(); render(); window.scrollTo(0, 0); break;
+    case 'pick': {
+      const lv = +t.dataset.lv;
+      if (lv > computeStats().level) { toast('🔒 Se débloque au niveau ' + lv); break; }
+      db.profile[t.dataset.kind] = t.dataset.v;
+      save(); applyTheme(); render();
+      if (t.dataset.kind === 'effect') celebrate(t.dataset.v);
+      break;
+    }
+    case 'tryfx': celebrate(); break;
     case 'daysum': {
       const day = t.dataset.day;
       const list = db.sets.filter(s => dayKey(s.t) === day).sort((a, b) => a.t - b.t);
@@ -1514,7 +1902,7 @@ $('#app').addEventListener('click', e => {
     }
     case 'wipe':
       if (confirm('Effacer TOUTES tes séances, exercices et programmes ? Cette action est définitive.')) {
-        db = freshDb(); save(); ui.exId = null; ui.editProg = null; ui.summary = null; ui.badges = false; ui.progEx = null; render(); toast('Données effacées');
+        db = freshDb(); save(); applyTheme(); ui.exId = null; ui.editProg = null; ui.summary = null; ui.badges = false; ui.rewards = false; ui.progEx = null; render(); toast('Données effacées');
       }
       break;
   }
@@ -1527,13 +1915,16 @@ $('#importFile').addEventListener('change', e => {
 });
 
 // Bouton retour Android / geste retour
-window.addEventListener('popstate', () => { if (ui.exId || ui.editProg || ui.summary || ui.badges) closeSub(); });
+window.addEventListener('popstate', () => { if (ui.exId || ui.editProg || ui.summary || ui.badges || ui.rewards) closeSub(); });
 
 // Synchronisation si l'app est ouverte dans deux onglets
 window.addEventListener('storage', e => { if (e.key === STORE_KEY) { db = load(); render(); } });
 
-syncBadges(false); // badges déjà mérités avant cette version : sans fanfare
+// Badges, défis et niveau déjà mérités avant cette version : sans fanfare
+const startMsgs = syncProgress(false);
+applyTheme();
 render();
+if (startMsgs.length) announce(startMsgs);
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   // Recharge une fois quand une nouvelle version de l'app vient d'être installée
