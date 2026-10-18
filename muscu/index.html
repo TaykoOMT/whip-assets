@@ -245,6 +245,31 @@
   .item-actions { display: flex; gap: 6px; margin-top: 8px; }
   .item-actions button { padding: 8px 12px; border-radius: 10px; background: var(--surface-2); font-size: 14px; }
   .item-actions .danger { margin-left: auto; }
+
+  /* Suggestion de charge */
+  .suggest {
+    margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; font-size: 14px;
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+
+  /* Chrono des exercices en durée */
+  .chrono { text-align: center; }
+  .chrono-time { font-size: 72px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; margin: 6px 0 10px; }
+  .progress.big { height: 12px; margin-bottom: 4px; }
+
+  /* Résumé de séance */
+  .hero { text-align: center; padding: 18px 14px; }
+  .hero .big { font-size: 40px; }
+  .hero .title { font-size: 20px; font-weight: 800; margin: 4px 0 2px; }
+  .delta { font-size: 12px; font-weight: 600; color: var(--muted); margin-top: 2px; }
+  .delta.up { color: #1f9d55; }
+  .delta.down { color: var(--danger); }
+  .arrow { font-weight: 800; margin-left: 6px; }
+  .arrow.up { color: #1f9d55; }
+  .arrow.down { color: var(--danger); }
+  .card ul { margin: 6px 0 0; padding-left: 20px; }
+  .card li { margin: 4px 0; }
 </style>
 </head>
 <body>
@@ -353,6 +378,7 @@ function migrate(d) {
         ({ exId: findOrCreateEx(d, n, kind).id, sets, target, rest, tip: tip || '' }))
     }));
   }
+  if (!Array.isArray(d.runs)) d.runs = [];
   if (d.active && (Date.now() - d.active.start > 12 * 3600e3 || !d.programs.some(p => p.id === d.active.progId))) d.active = null;
   d.v = 2;
   return d;
@@ -444,6 +470,37 @@ function progCtx() {
   return i < 0 ? null : { p, i, item: p.items[i] };
 }
 
+// Objectif d'un exercice : celui du programme en cours, sinon du premier programme qui le contient
+function itemFor(exId) {
+  const ctx = progCtx();
+  if (ctx && ctx.item.exId === exId) return ctx.item;
+  for (const p of db.programs) { const it = p.items.find(i => i.exId === exId); if (it) return it; }
+  return null;
+}
+// "8–12" → { lo: 8, hi: 12 }, "15" → { lo: 15, hi: 15 }
+function parseRange(str) {
+  const m = String(str || '').match(/(\d+)\s*(?:[–-]\s*(\d+))?/);
+  return m ? { lo: +m[1], hi: +(m[2] || m[1]) } : null;
+}
+// Double progression : si toutes les séries de travail atteignent le haut de la fourchette, on monte la charge
+function suggestFor(exId, sets) {
+  const it = itemFor(exId);
+  const range = it && parseRange(it.target);
+  if (!range || kindOf(exId) !== 'reps' || !sets.length) return null;
+  const top = Math.max(...sets.map(s => s.w));
+  const work = sets.filter(s => s.w === top).slice(0, it.sets);
+  if (work.length < it.sets || work.some(s => s.r < range.hi)) return null;
+  if (top === 0) return { w: 0, r: range.hi + 1, text: `${work.length} × ${range.hi}+ réussi au poids du corps → vise ${range.hi + 1} reps ou ajoute du lest.` };
+  const w = round2(top + db.settings.step);
+  return { w, r: range.lo, text: `${work.length} × ${range.hi}+ réussi à ${fmtNum(top)} kg → passe à ${fmtNum(w)} kg (vise ${range.lo} reps).` };
+}
+const lastSessionBefore = (exId, t) => {
+  const before = setsOf(exId).filter(s => s.t < t);
+  if (!before.length) return [];
+  const day = dayKey(before[before.length - 1].t);
+  return before.filter(s => dayKey(s.t) === day);
+};
+
 let toastTimer;
 function toast(msg) {
   const el = $('#toast');
@@ -456,7 +513,7 @@ function toast(msg) {
 function vibrate(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
 
 // ---------- État de l'interface ----------
-const ui = { tab: db.active ? 'programmes' : 'seance', exId: null, editProg: null, search: '', w: 0, r: 10, progEx: null, alerted: null };
+const ui = { tab: db.active ? 'programmes' : 'seance', exId: null, editProg: null, summary: null, chrono: null, search: '', w: 0, r: 10, progEx: null, alerted: null };
 
 // ---------- Rendu ----------
 function render() {
@@ -464,13 +521,14 @@ function render() {
     if (b.dataset.tab === ui.tab) b.setAttribute('aria-current', 'page');
     else b.removeAttribute('aria-current');
   });
-  $('#back').hidden = !(ui.exId || ui.editProg);
+  $('#back').hidden = !(ui.exId || ui.editProg || ui.summary);
   const views = {
     seance: viewPicker,
     programmes: () => ui.editProg ? viewProgEdit() : db.active ? viewRun() : viewPrograms(),
     historique: viewHistory, progres: viewProgress, reglages: viewSettings
   };
-  if (ui.exId && (ui.tab === 'seance' || ui.tab === 'programmes')) viewExercise();
+  if (ui.summary) viewSummary();
+  else if (ui.exId && (ui.tab === 'seance' || ui.tab === 'programmes')) viewExercise();
   else views[ui.tab]();
   updateTimer();
 }
@@ -481,6 +539,7 @@ function setTitle(t) { $('#title').textContent = t; }
 function pushSub() { history.pushState({ sub: 1 }, ''); }
 function closeSub() {
   if (ui.exId) ui.exId = null;
+  else if (ui.summary) ui.summary = null;
   else ui.editProg = null;
   render();
 }
@@ -539,6 +598,7 @@ function viewExercise() {
   const targetLine = ctx ? `
     <div class="target">Objectif : <b>${ctx.item.sets} × ${esc(ctx.item.target)}</b>${ctx.item.rest ? ' · repos ' + esc(ctx.item.rest) : ''}</div>
     ${ctx.item.tip ? `<div class="tip">💡 ${esc(ctx.item.tip)}</div>` : ''}` : '';
+  const sug = !shown.length && prev ? suggestFor(ex.id, prev.sets) : null;
   const lastLine = prev
     ? `<div class="last">Dernière fois (${esc(relDay(prev.day))}) : <b>${prev.sets.map(fmtSet).join(' · ')}</b></div>`
     : `<div class="last">Première fois sur cet exercice 💪</div>`;
@@ -563,10 +623,20 @@ function viewExercise() {
   let addLabel = 'Ajouter la série ' + n;
   if (ctx) addLabel = done ? '+ Série en plus' : `Valider la série ${n} / ${ctx.item.sets}`;
   const repsLabel = kind === 's' ? 'Durée (secondes)' : kind === 'min' ? 'Durée (minutes)' : 'Répétitions';
+  const timed = kind !== 'reps';
+  const running = ui.chrono && ui.chrono.exId === ex.id;
 
   $('#app').innerHTML = `
     ${targetLine}
     ${lastLine}
+    ${sug ? `<div class="suggest">📈 ${esc(sug.text)}</div>` : ''}
+    ${running ? `<div class="card chrono">
+      <div class="small muted">Série ${n}${ctx ? ' / ' + ctx.item.sets : ''} · objectif ${ui.chrono.planned} ${kind}</div>
+      <div class="chrono-time" id="chronoLeft">${mmss(Math.ceil(Math.max(0, ui.chrono.dur - (Date.now() - ui.chrono.start) / 1000)))}</div>
+      <div class="progress big"><div id="chronoBar" style="width:0%"></div></div>
+      <button class="primary" data-act="cstop">■ Arrêter et noter</button>
+      <button class="secondary" data-act="ccancel">Annuler</button>
+    </div>` : `
     <div class="card">
       <div class="steppers">
         ${kind === 'reps' ? `<div class="stepper">
@@ -586,8 +656,9 @@ function viewExercise() {
           </div>
         </div>
       </div>
-      <button class="${done ? 'secondary' : 'primary'}" data-act="add">${addLabel}</button>
-    </div>
+      ${timed ? `<button class="${done ? 'secondary' : 'primary'}" data-act="cstart">▶ Lancer le chrono</button>` : ''}
+      <button class="${done || timed ? 'secondary' : 'primary'}" data-act="add">${timed && !done ? '✓ Noter sans chrono' : addLabel}</button>
+    </div>`}
     ${done ? `<button class="primary" data-act="next" style="margin-bottom:12px">${next ? 'Exercice suivant : ' + esc((exById(next.exId) || {}).name || '') + ' ›' : 'Dernier exercice fait ✓ Retour à la séance'}</button>` : ''}
     ${shown.length ? `<div class="section-title">${ctx ? 'Cette séance' : 'Aujourd’hui'}</div><div class="sets">${setsHtml}</div>` : ''}
     ${!ctx ? `<div class="small muted" style="margin:14px 4px 0">Astuce : mets 0 kg pour un exercice au poids du corps (PDC). Touche une série pour reprendre ses valeurs.</div>` : ''}`;
@@ -603,8 +674,10 @@ function prefill(id) {
     if (dayKey(last.t) === todayKey()) { ui.w = last.w; ui.r = last.r; }
     else {
       const prevDay = dayKey(last.t);
-      const first = sets.find(s => dayKey(s.t) === prevDay);
-      ui.w = first.w; ui.r = first.r;
+      const prevSets = sets.filter(s => dayKey(s.t) === prevDay);
+      const sug = suggestFor(id, prevSets);
+      if (sug) { ui.w = sug.w; ui.r = sug.r; }
+      else { ui.w = prevSets[0].w; ui.r = prevSets[0].r; }
     }
   } else {
     ui.w = 0;
@@ -631,17 +704,86 @@ function addSet() {
   const kind = kindOf(ui.exId);
   if (kind !== 'reps') ui.w = 0;
   if (ui.r < 1) { toast(kind === 'reps' ? 'Indique le nombre de répétitions' : 'Indique la durée'); return; }
-  const prevMax = Math.max(0, ...db.sets.filter(s => s.exId === ui.exId).map(s => s.w));
-  const hadSets = db.sets.some(s => s.exId === ui.exId);
-  db.sets.push({ id: uid(), exId: ui.exId, w: ui.w, r: ui.r, t: Date.now() });
+  recordSet(ui.exId, ui.w, ui.r);
+}
+
+function recordSet(exId, w, r) {
+  const prevMax = Math.max(0, ...db.sets.filter(s => s.exId === exId).map(s => s.w));
+  const hadSets = db.sets.some(s => s.exId === exId);
+  db.sets.push({ id: uid(), exId, w, r, t: Date.now() });
   save();
   vibrate(30);
   const ctx = progCtx();
-  if (hadSets && ui.w > prevMax) toast('🏆 Nouveau record : ' + fmtW(ui.w) + ' !');
-  else if (ctx && runSets(ui.exId).length === ctx.item.sets) toast('Exercice terminé ✓');
+  if (hadSets && w > prevMax) toast('🏆 Nouveau record : ' + fmtW(w) + ' !');
+  else if (ctx && ctx.item.exId === exId && runSets(exId).length === ctx.item.sets) toast('Exercice terminé ✓');
   else toast('Série enregistrée ✓');
   render();
 }
+
+// ---------- Chrono (gainage, killy, course…) ----------
+let audioCtx = null;
+function unlockAudio() {
+  // Sur iPhone, le son doit être autorisé par un geste de l'utilisateur
+  try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); } catch (e) {}
+}
+function beep(times) {
+  try {
+    unlockAudio();
+    for (let i = 0; i < times; i++) {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      const t0 = audioCtx.currentTime + i * 0.35;
+      o.type = 'sine'; o.frequency.value = 880;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.6, t0 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.25);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(t0); o.stop(t0 + 0.3);
+    }
+  } catch (e) {}
+}
+let wakeLock = null;
+async function keepAwake(on) {
+  try {
+    if (on && !wakeLock && 'wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch (e) {}
+}
+const unitSec = exId => kindOf(exId) === 'min' ? 60 : 1;
+function startChrono() {
+  readInputs();
+  if (ui.r < 1) { toast('Indique la durée'); return; }
+  unlockAudio();
+  ui.chrono = { exId: ui.exId, start: Date.now(), dur: ui.r * unitSec(ui.exId), planned: ui.r };
+  keepAwake(true); vibrate(30); render();
+}
+function stopChrono(record) {
+  const c = ui.chrono;
+  if (!c) return;
+  ui.chrono = null; keepAwake(false);
+  if (!record) { render(); return; }
+  const elapsed = Math.min(c.dur, (Date.now() - c.start) / 1000);
+  const r = Math.round(elapsed / unitSec(c.exId));
+  if (r < 1) { toast('Trop court : série non notée'); render(); return; }
+  recordSet(c.exId, 0, r);
+}
+function tickChrono() {
+  const c = ui.chrono;
+  if (!c) return;
+  const left = c.dur - (Date.now() - c.start) / 1000;
+  if (left <= 0) {
+    beep(3); vibrate([300, 150, 300]);
+    ui.chrono = null; keepAwake(false);
+    recordSet(c.exId, 0, c.planned);
+    return;
+  }
+  const el = $('#chronoLeft'), bar = $('#chronoBar');
+  if (el) el.textContent = mmss(Math.ceil(left));
+  if (bar) bar.style.width = (100 - left / c.dur * 100).toFixed(1) + '%';
+}
+setInterval(tickChrono, 250);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && ui.chrono) keepAwake(true); });
 
 // ---------- Programmes ----------
 function viewPrograms() {
@@ -705,10 +847,92 @@ function finishRun() {
   const total = p.items.reduce((a, it) => a + it.sets, 0);
   const done = p.items.reduce((a, it) => a + Math.min(runSets(it.exId).length, it.sets), 0);
   if (done < total && !confirm(`Il reste ${total - done} série(s) prévue(s). Terminer quand même ?`)) return;
-  if (count) p.lastDone = Date.now();
-  db.active = null; save();
-  render();
-  toast(count ? `Séance terminée 💪 ${count} série${count > 1 ? 's' : ''}` : 'Séance terminée');
+  const start = db.active.start;
+  const end = Math.max(start, ...db.sets.filter(s => s.t >= start).map(s => s.t));
+  db.active = null;
+  if (count) {
+    p.lastDone = Date.now();
+    db.runs.push({ progId: p.id, start, end });
+    ui.summary = { progId: p.id, start, end, finished: true };
+    pushSub();
+  }
+  save();
+  render(); window.scrollTo(0, 0);
+  if (!count) toast('Séance terminée');
+}
+
+// Résumé d'une séance : chiffres, records, comparaison avec la fois d'avant
+function viewSummary() {
+  const sm = ui.summary;
+  setTitle('Résumé');
+  const inRange = (s, a, b) => s.t >= a && s.t <= b;
+  const sets = db.sets.filter(s => inRange(s, sm.start, sm.end)).sort((a, b) => a.t - b.t);
+  const volOf = list => Math.round(list.reduce((a, s) => a + (kindOf(s.exId) === 'reps' ? s.w * s.r : 0), 0));
+  const fmtDur = ms => { const m = Math.round(ms / 60000); return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0'); };
+  const cur = { n: sets.length, vol: volOf(sets), dur: sm.end - sm.start };
+
+  // Comparaison avec la séance précédente du même programme
+  let prev = null;
+  if (sm.progId) {
+    const pr = db.runs.filter(r => r.progId === sm.progId && r.start < sm.start).pop();
+    if (pr) {
+      const ps = db.sets.filter(s => inRange(s, pr.start, pr.end));
+      prev = { n: ps.length, vol: volOf(ps), dur: pr.end - pr.start };
+    }
+  }
+  const delta = (a, b, fmt) => {
+    if (!prev) return '';
+    const d = a - b;
+    if (!d) return '<div class="delta">= dernière fois</div>';
+    return `<div class="delta ${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : '−'}${fmt(Math.abs(d))} vs dernière fois</div>`;
+  };
+  const deltaDur = () => {
+    if (!prev) return '';
+    const d = Math.round((cur.dur - prev.dur) / 60000);
+    return `<div class="delta">${d === 0 ? '= dernière fois' : (d > 0 ? '+' : '−') + Math.abs(d) + ' min'}</div>`;
+  };
+
+  // Détail par exercice
+  const order = [...new Set(sets.map(s => s.exId))];
+  const better = (a, b) => a.w !== b.w ? a.w - b.w : a.r - b.r;
+  const best = list => list.reduce((m, s) => (!m || better(s, m) > 0 ? s : m), null);
+  const records = [], suggestions = [];
+  const exHtml = order.map(exId => {
+    const ex = exById(exId);
+    const mine = sets.filter(s => s.exId === exId);
+    const before = lastSessionBefore(exId, sm.start);
+    const prevMax = Math.max(0, ...setsOf(exId).filter(s => s.t < sm.start).map(s => s.w));
+    const myMax = Math.max(...mine.map(s => s.w));
+    if (before.length && prevMax > 0 && myMax > prevMax) records.push(`${ex ? ex.name : '?'} : ${fmtW(myMax)} (avant ${fmtW(prevMax)})`);
+    const sug = suggestFor(exId, mine);
+    if (sug) suggestions.push(`${ex ? ex.name : '?'} : ${sug.text}`);
+    let arrow = '';
+    if (before.length) {
+      const c = better(best(mine), best(before));
+      arrow = c > 0 ? '<span class="arrow up">↑</span>' : c < 0 ? '<span class="arrow down">↓</span>' : '<span class="arrow">=</span>';
+    }
+    return `<div class="ex"><div class="name">${esc(ex ? ex.name : 'Exercice supprimé')}${arrow}</div>
+      <div class="detail">${mine.map(fmtSet).join(' · ')}</div>
+      ${before.length ? `<div class="small muted">Avant (${esc(relDay(dayKey(before[0].t)))}) : ${before.map(fmtSet).join(' · ')}</div>` : ''}</div>`;
+  }).join('');
+
+  const p = sm.progId && progById(sm.progId);
+  $('#app').innerHTML = `
+    <div class="card hero">
+      <div class="big">${sm.finished ? '💪' : '📋'}</div>
+      <div class="title">${sm.finished ? 'Séance terminée !' : esc(p ? p.name : 'Résumé de la journée')}</div>
+      <div class="small muted">${sm.finished && p ? esc(p.name) + ' · ' : ''}${esc(fmtDay(dayKey(sm.start)))}</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="k">Durée</div><div class="val">${fmtDur(cur.dur)}</div>${deltaDur()}</div>
+      <div class="stat"><div class="k">Séries</div><div class="val">${cur.n}</div>${delta(cur.n, prev && prev.n, String)}</div>
+      <div class="stat"><div class="k">Volume (kg)</div><div class="val">${fmtNum(cur.vol)}</div>${delta(cur.vol, prev && prev.vol, fmtNum)}</div>
+    </div>
+    ${records.length ? `<div class="card"><b>🏆 Record${records.length > 1 ? 's' : ''} battu${records.length > 1 ? 's' : ''}</b><ul>${records.map(r => `<li>${esc(r)}</li>`).join('')}</ul></div>` : ''}
+    ${suggestions.length ? `<div class="card"><b>📈 Pour la prochaine fois</b><ul>${suggestions.map(r => `<li>${esc(r)}</li>`).join('')}</ul></div>` : ''}
+    <div class="section-title">Exercices</div>
+    <div class="card day">${exHtml}</div>
+    <button class="primary" data-act="sumclose">OK</button>`;
 }
 
 // Édition d'un programme
@@ -781,7 +1005,8 @@ function viewHistory() {
     return `<div class="card day">
       <h3>${esc(fmtDay(day))}</h3>
       <div class="small muted" style="margin:-4px 0 10px">${total} série${total > 1 ? 's' : ''}${volume ? ' · ' + fmtNum(Math.round(volume)) + ' kg soulevés' : ''}</div>
-      ${exHtml}</div>`;
+      ${exHtml}
+      <button class="link" data-act="daysum" data-day="${day}" style="margin-top:6px">Voir le résumé ›</button></div>`;
   }).join('');
   $('#app').innerHTML = html;
 }
@@ -910,7 +1135,7 @@ function importData(file) {
       const d = JSON.parse(reader.result);
       if (!d || !Array.isArray(d.exercises) || !Array.isArray(d.sets)) throw new Error('format');
       if (!confirm(`Remplacer tes données actuelles par cette sauvegarde (${d.sets.length} séries) ?`)) return;
-      db = migrate(d); save(); ui.exId = null; ui.editProg = null; ui.progEx = null;
+      db = migrate(d); save(); ui.exId = null; ui.editProg = null; ui.summary = null; ui.progEx = null;
       toast('Sauvegarde importée ✓'); render();
     } catch (e) { alert('Ce fichier n’est pas une sauvegarde Muscu valide.'); }
   };
@@ -924,7 +1149,7 @@ function updateTimer() {
   const el = $('#timer');
   const last = db.sets.reduce((m, s) => (!m || s.t > m.t ? s : m), null);
   const sec = last ? Math.floor((Date.now() - last.t) / 1000) : 0;
-  if (!last || sec > 15 * 60 || (ui.tab !== 'seance' && ui.tab !== 'programmes') || ui.editProg) { el.hidden = true; return; }
+  if (!last || sec > 15 * 60 || (ui.tab !== 'seance' && ui.tab !== 'programmes') || ui.editProg || ui.summary || ui.chrono) { el.hidden = true; return; }
   let rest = 0;
   if (db.active && last.t >= db.active.start) {
     const p = progById(db.active.progId);
@@ -954,7 +1179,7 @@ document.querySelector('nav').addEventListener('click', e => {
   const b = e.target.closest('button[data-tab]');
   if (!b) return;
   ui.tab = b.dataset.tab;
-  ui.exId = null; ui.editProg = null;
+  ui.exId = null; ui.editProg = null; ui.summary = null;
   render();
   window.scrollTo(0, 0);
 });
@@ -1055,6 +1280,20 @@ $('#app').addEventListener('click', e => {
       break;
     }
     case 'add': addSet(); break;
+    case 'cstart': startChrono(); break;
+    case 'cstop': stopChrono(true); break;
+    case 'ccancel': stopChrono(false); break;
+    case 'sumclose': $('#back').click(); break;
+    case 'daysum': {
+      const day = t.dataset.day;
+      const list = db.sets.filter(s => dayKey(s.t) === day).sort((a, b) => a.t - b.t);
+      const runs = db.runs.filter(r => dayKey(r.start) === day);
+      const run = runs.length === 1 && list.every(s => s.t >= runs[0].start && s.t <= runs[0].end) && runs[0];
+      ui.summary = run ? { progId: run.progId, start: run.start, end: run.end }
+        : { progId: null, start: list[0].t, end: list[list.length - 1].t };
+      pushSub(); render(); window.scrollTo(0, 0);
+      break;
+    }
     case 'next': {
       const ctx = progCtx();
       const nx = ctx && ctx.p.items[ctx.i + 1];
@@ -1137,7 +1376,7 @@ $('#importFile').addEventListener('change', e => {
 });
 
 // Bouton retour Android / geste retour
-window.addEventListener('popstate', () => { if (ui.exId || ui.editProg) closeSub(); });
+window.addEventListener('popstate', () => { if (ui.exId || ui.editProg || ui.summary) closeSub(); });
 
 // Synchronisation si l'app est ouverte dans deux onglets
 window.addEventListener('storage', e => { if (e.key === STORE_KEY) { db = load(); render(); } });

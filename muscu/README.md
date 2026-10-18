@@ -16,7 +16,14 @@ et garde tes données **sur ton téléphone** (rien n'est envoyé sur internet).
 - **Chrono de repos** : pendant un programme, compte à rebours selon le repos prévu (le téléphone
   vibre à la fin) ; sinon, temps écoulé depuis ta dernière série.
 - **Exercices en durée** : gainage, killy, course… se notent en secondes ou en minutes
-  (Réglages → Exercices → type).
+  (Réglages → Exercices → type). Bouton **▶ Lancer le chrono** : compte à rebours, écran
+  maintenu allumé, bip + vibration à la fin et série notée automatiquement.
+- **Suggestion de charge** : si toutes tes séries ont atteint le haut de l'objectif
+  (ex. 3 × 12 sur « 8–12 »), l'app propose la charge suivante (+ le pas choisi dans Réglages)
+  et la pré-remplit.
+- **Résumé de séance** : à la fin d'un programme (ou depuis l'Historique) : durée, séries,
+  volume, records battus, comparaison avec la fois précédente et charges conseillées pour la
+  prochaine fois.
 - **Records** : 🏆 quand tu dépasses ta charge max sur un exercice.
 - **Historique** : toutes tes séances, jour par jour, avec le tonnage soulevé.
 - **Progrès** : courbe de la charge max par séance, record, 1RM estimé.
