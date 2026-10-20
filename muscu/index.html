@@ -486,7 +486,7 @@ function migrate(d) {
       }
     }
   }
-  d.settings = Object.assign({ sound: true }, d.settings);
+  d.settings = Object.assign({ sound: true, awake: true }, d.settings);
   if ((d.v || 1) < 4) {
     // Ajout des séances D1 (footing) et D2 (fractionné) aux installations existantes
     for (const sp of SEED_PROGRAMS.filter(x => /^Séance D/.test(x.name))) {
@@ -935,6 +935,7 @@ const ui = { tab: db.active ? 'programmes' : 'seance', exId: null, editProg: nul
 
 // ---------- Rendu ----------
 function render() {
+  updateWakeLock();
   document.querySelectorAll('nav button').forEach(b => {
     if (b.dataset.tab === ui.tab) b.setAttribute('aria-current', 'page');
     else b.removeAttribute('aria-current');
@@ -1167,27 +1168,33 @@ function beep(times) {
     }
   } catch (e) {}
 }
-let wakeLock = null;
+// Écran maintenu allumé pendant le chrono et, si le réglage est actif, pendant toute une séance de programme
+let wakeLock = null, wakePending = false;
 async function keepAwake(on) {
   try {
-    if (on && !wakeLock && 'wakeLock' in navigator) {
+    if (on && !wakeLock && !wakePending && 'wakeLock' in navigator && !document.hidden) {
+      wakePending = true;
       wakeLock = await navigator.wakeLock.request('screen');
       wakeLock.addEventListener('release', () => { wakeLock = null; });
-    } else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
-  } catch (e) {}
+    } else if (!on && wakeLock) { const w = wakeLock; wakeLock = null; await w.release(); }
+  } catch (e) {} finally { wakePending = false; }
+  // L'état a pu changer pendant la demande
+  if (on !== wantAwake()) updateWakeLock();
 }
+const wantAwake = () => !!ui.chrono || (!!db.active && db.settings.awake);
+function updateWakeLock() { keepAwake(wantAwake()); }
 const unitSec = exId => kindOf(exId) === 'min' ? 60 : 1;
 function startChrono() {
   readInputs();
   if (ui.r < 1) { toast('Indique la durée'); return; }
   unlockAudio();
   ui.chrono = { exId: ui.exId, start: Date.now(), dur: ui.r * unitSec(ui.exId), planned: ui.r };
-  keepAwake(true); vibrate(30); render();
+  updateWakeLock(); vibrate(30); render();
 }
 function stopChrono(record) {
   const c = ui.chrono;
   if (!c) return;
-  ui.chrono = null; keepAwake(false);
+  ui.chrono = null; updateWakeLock();
   if (!record) { render(); return; }
   const elapsed = Math.min(c.dur, (Date.now() - c.start) / 1000);
   const r = Math.round(elapsed / unitSec(c.exId));
@@ -1200,7 +1207,7 @@ function tickChrono() {
   const left = c.dur - (Date.now() - c.start) / 1000;
   if (left <= 0) {
     beep(3); vibrate([300, 150, 300]);
-    ui.chrono = null; keepAwake(false);
+    ui.chrono = null; updateWakeLock();
     recordSet(c.exId, 0, c.planned);
     return;
   }
@@ -1209,7 +1216,8 @@ function tickChrono() {
   if (bar) bar.style.width = (100 - left / c.dur * 100).toFixed(1) + '%';
 }
 setInterval(tickChrono, 250);
-document.addEventListener('visibilitychange', () => { if (!document.hidden && ui.chrono) keepAwake(true); });
+// Le téléphone relâche le verrou quand l'app passe en arrière-plan : on le reprend au retour
+document.addEventListener('visibilitychange', () => { if (!document.hidden) updateWakeLock(); });
 
 // ---------- Programmes ----------
 function viewPrograms() {
@@ -1253,6 +1261,7 @@ function viewRun() {
     <div class="card" style="padding:12px 14px">
       <div class="small"><b>${done} / ${total}</b> séries · ${pct} %</div>
       <div class="progress"><div style="width:${pct}%"></div></div>
+      ${db.settings.awake && 'wakeLock' in navigator ? '<div class="small muted">🔆 Écran maintenu allumé pendant la séance</div>' : ''}
     </div>
     <div class="list" style="margin-top:0">${rows}</div>
     <button class="primary" data-act="finish" style="margin-top:16px">Terminer la séance</button>
@@ -1650,6 +1659,11 @@ function viewSettings() {
     <div class="card">
       <div class="small muted" style="margin-bottom:8px">Pas des boutons − / + pour le poids</div>
       <div class="seg">${steps.map(s => `<button data-act="step" data-v="${s}" aria-pressed="${db.settings.step === s}">${fmtNum(s)}</button>`).join('')}</div>
+      <div class="small muted" style="margin:14px 0 8px">🔆 Écran toujours allumé pendant une séance de programme</div>
+      <div class="seg">
+        <button data-act="awake" data-v="1" aria-pressed="${!!db.settings.awake}">Activé</button>
+        <button data-act="awake" data-v="0" aria-pressed="${!db.settings.awake}">Désactivé</button>
+      </div>
       <div class="small muted" style="margin:14px 0 8px">🔔 Bip à la fin du repos (programmes)</div>
       <div class="seg">
         <button data-act="sound" data-v="1" aria-pressed="${!!db.settings.sound}">Activé</button>
@@ -1925,6 +1939,7 @@ $('#app').addEventListener('click', e => {
     }
     case 'idel': if (p) { p.items.splice(i, 1); save(); render(); } break;
     case 'step': db.settings.step = Number(t.dataset.v); save(); render(); break;
+    case 'awake': db.settings.awake = t.dataset.v === '1'; save(); render(); break;
     case 'sound':
       db.settings.sound = t.dataset.v === '1'; save(); render();
       if (db.settings.sound) { unlockAudio(); beep(2); }

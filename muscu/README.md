@@ -13,6 +13,8 @@ et garde tes données **sur ton téléphone** (rien n'est envoyé sur internet).
   exercice avec l'objectif (séries × répétitions, repos) : tu n'as qu'à valider le poids et les
   répétitions de chaque série, puis « Exercice suivant ». Les programmes se modifient
   (exercices, séries, objectif, repos, conseil) et tu peux en créer d'autres.
+- **Écran toujours allumé** pendant une séance de programme et pendant le chrono, pour que le
+  compte à rebours et le bip fonctionnent même téléphone posé ou en poche (Réglages pour le couper).
 - **Chrono de repos** : pendant un programme, compte à rebours selon le repos prévu (le téléphone
   vibre à la fin) ; sinon, temps écoulé depuis ta dernière série.
 - **Exercices en durée** : gainage, killy, course… se notent en secondes ou en minutes
