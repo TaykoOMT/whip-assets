@@ -428,6 +428,25 @@ const SEED_PROGRAMS = [
       ['Killy contre un mur', 3, '30–40 s', '60–90 s', 's'],
       ['Gainage', 2, '30–45 s', '60–90 s', 's']
     ]
+  },
+  {
+    name: 'Séance D1 — Footing (facultative)',
+    note: 'À faire en premier pendant 3–4 semaines. Allonge petit à petit la course : 20 → 25 → 30 min. Si c’est encore dur, alterne 4 min de course et 1 min de marche.',
+    items: [
+      ['Marche rapide (échauffement)', 1, '5 min', '', 'min'],
+      ['Course dehors', 1, '20–30 min', '', 'min', 'Allure facile : tu dois pouvoir parler en courant.'],
+      ['Marche (retour au calme)', 1, '5 min', '', 'min'],
+      ['Étirements', 1, '5 min', '', 'min', 'Mollets, cuisses et hanches, sans forcer.']
+    ]
+  },
+  {
+    name: 'Séance D2 — Fractionné (facultative)',
+    note: 'À partir de la semaine 5, en alternance avec D1. Évite de la faire la veille de la séance B (jambes).',
+    items: [
+      ['Footing lent (échauffement)', 1, '10 min', '', 'min'],
+      ['Course rapide (fractionné)', 8, '1 min', '1 min', 'min', 'Environ 80 % de tes capacités. Pendant le repos : marche ou trottine.'],
+      ['Marche (retour au calme)', 1, '5 min', '', 'min']
+    ]
   }
 ];
 
@@ -444,13 +463,12 @@ function findOrCreateEx(d, name, kind) {
 // Met à niveau une base (ancienne version, import…) vers le format actuel
 function migrate(d) {
   d.settings = Object.assign({ step: 2.5 }, d.settings);
-  if (!Array.isArray(d.programs)) {
-    d.programs = SEED_PROGRAMS.map(sp => ({
-      id: uid(), name: sp.name, note: sp.note,
-      items: sp.items.map(([n, sets, target, rest, kind, tip]) =>
-        ({ exId: findOrCreateEx(d, n, kind).id, sets, target, rest, tip: tip || '' }))
-    }));
-  }
+  const build = sp => ({
+    id: uid(), name: sp.name, note: sp.note,
+    items: sp.items.map(([n, sets, target, rest, kind, tip]) =>
+      ({ exId: findOrCreateEx(d, n, kind).id, sets, target, rest, tip: tip || '' }))
+  });
+  if (!Array.isArray(d.programs)) d.programs = SEED_PROGRAMS.map(build);
   if (!Array.isArray(d.runs)) d.runs = [];
   if (!d.badges || typeof d.badges !== 'object') d.badges = {};
   if (!d.challenges || typeof d.challenges !== 'object') d.challenges = {};
@@ -469,7 +487,13 @@ function migrate(d) {
     }
   }
   d.settings = Object.assign({ sound: true }, d.settings);
-  d.v = 3;
+  if ((d.v || 1) < 4) {
+    // Ajout des séances D1 (footing) et D2 (fractionné) aux installations existantes
+    for (const sp of SEED_PROGRAMS.filter(x => /^Séance D/.test(x.name))) {
+      if (!d.programs.some(p => norm(p.name) === norm(sp.name))) d.programs.push(build(sp));
+    }
+  }
+  d.v = 4;
   return d;
 }
 
