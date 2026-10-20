@@ -17,6 +17,10 @@ et garde tes données **sur ton téléphone** (rien n'est envoyé sur internet).
   compte à rebours et le bip fonctionnent même téléphone posé ou en poche (Réglages pour le couper).
 - **Chrono de repos** : pendant un programme, compte à rebours selon le repos prévu (le téléphone
   vibre à la fin) ; sinon, temps écoulé depuis ta dernière série.
+- **EMOM** (« every minute on the minute ») : un exercice de programme peut être en mode EMOM
+  (ex. tractions 8 min × 3 en séance C). Bip au début de chaque minute, une série notée
+  automatiquement par minute, et progression proposée : +1 min jusqu'à 12, puis 8 min avec
+  +1 rep. Se règle dans Programmes → Modifier.
 - **Exercices en durée** : gainage, killy, course… se notent en secondes ou en minutes
   (Réglages → Exercices → type). Bouton **▶ Lancer le chrono** : compte à rebours, écran
   maintenu allumé, bip + vibration à la fin et série notée automatiquement.

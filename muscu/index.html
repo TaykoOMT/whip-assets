@@ -339,6 +339,7 @@
   .lvl-row.ok .lv { color: var(--accent); }
   .lvl-row.ok { color: var(--muted); }
   .lvl-row.next { font-weight: 600; }
+  .emom-min { font-size: 22px; font-weight: 800; margin-top: 4px; }
   .fx { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 30; }
   .card h4 { margin: 0 0 10px; font-size: 16px; }
   .badge-icons { font-size: 22px; letter-spacing: 2px; white-space: nowrap; overflow: hidden; }
@@ -420,7 +421,7 @@ const SEED_PROGRAMS = [
     name: 'Séance C — Corps entier et endurance',
     note: 'Durée : 1 h 10 à 1 h 20. Repos : 2 min sur les tractions et les exercices principaux, 60–90 s sur les autres. Garde une bonne technique plutôt que d’aller vite.',
     items: [
-      ['Tractions pronation', 3, '3–5', '2 min'],
+      ['Tractions pronation', 8, '3', '', null, 'EMOM : au début de chaque minute, fais tes tractions, puis repose-toi le reste de la minute. Chaque rep propre : menton au-dessus de la barre, bras tendus en bas.', 'emom'],
       ['Développé incliné haltères', 2, '8–12', '2 min'],
       ['Rowing poulie basse', 2, '10–12', '2 min'],
       ['Squats au poids du corps', 3, '15', '60–90 s'],
@@ -465,8 +466,8 @@ function migrate(d) {
   d.settings = Object.assign({ step: 2.5 }, d.settings);
   const build = sp => ({
     id: uid(), name: sp.name, note: sp.note,
-    items: sp.items.map(([n, sets, target, rest, kind, tip]) =>
-      ({ exId: findOrCreateEx(d, n, kind).id, sets, target, rest, tip: tip || '' }))
+    items: sp.items.map(([n, sets, target, rest, kind, tip, mode]) =>
+      Object.assign({ exId: findOrCreateEx(d, n, kind).id, sets, target, rest, tip: tip || '' }, mode ? { mode } : {}))
   });
   if (!Array.isArray(d.programs)) d.programs = SEED_PROGRAMS.map(build);
   if (!Array.isArray(d.runs)) d.runs = [];
@@ -493,7 +494,15 @@ function migrate(d) {
       if (!d.programs.some(p => norm(p.name) === norm(sp.name))) d.programs.push(build(sp));
     }
   }
-  d.v = 4;
+  if ((d.v || 1) < 5) {
+    // Séance C : tractions en EMOM 8 min × 3 (si l'utilisateur n'a pas modifié l'exercice)
+    const C = d.programs.find(p => norm(p.name) === norm('Séance C — Corps entier et endurance'));
+    const it = C && C.items.find(x => norm((d.exercises.find(e => e.id === x.exId) || {}).name || '') === norm('Tractions pronation'));
+    if (it && !it.mode && it.sets === 3 && it.target === '3–5') {
+      Object.assign(it, { mode: 'emom', sets: 8, target: '3', rest: '', tip: 'EMOM : au début de chaque minute, fais tes tractions, puis repose-toi le reste de la minute. Chaque rep propre : menton au-dessus de la barre, bras tendus en bas.' });
+    }
+  }
+  d.v = 5;
   return d;
 }
 
@@ -539,6 +548,15 @@ function fmtSet(s) {
   const k = kindOf(s.exId);
   if (k !== 'reps') return (s.w > 0 ? fmtNum(s.w) + ' kg · ' : '') + s.r + ' ' + k;
   return (s.w > 0 ? fmtNum(s.w) : 'PDC') + ' × ' + s.r;
+}
+// « PDC × 3 · PDC × 3 · PDC × 3 » → « PDC × 3 (×3) »
+function fmtSets(list) {
+  const groups = [];
+  for (const s of list) {
+    const f = fmtSet(s), g = groups[groups.length - 1];
+    if (g && g.f === f) g.n++; else groups.push({ f, n: 1 });
+  }
+  return groups.map(g => g.n >= 3 ? `${g.f} (×${g.n})` : Array(g.n).fill(g.f).join(' · ')).join(' · ');
 }
 const fmtSetLong = s => kindOf(s.exId) === 'reps' ? fmtW(s.w) + ' × ' + s.r : fmtSet(s);
 
@@ -601,6 +619,12 @@ function suggestFor(exId, sets) {
   const range = it && parseRange(it.target);
   if (!range || kindOf(exId) !== 'reps' || !sets.length) return null;
   const top = Math.max(...sets.map(s => s.w));
+  if (it.mode === 'emom') {
+    const reps = range.lo;
+    if (sets.length < it.sets || sets.slice(0, it.sets).some(s => s.r < reps)) return null;
+    if (it.sets < 12) return { w: top, r: reps, text: `EMOM ${it.sets} min × ${reps} réussie → passe à ${it.sets + 1} min.`, apply: { sets: it.sets + 1 }, label: `${it.sets + 1} min` };
+    return { w: top, r: reps + 1, text: `EMOM 12 min × ${reps} réussie → reviens à 8 min avec ${reps + 1} reps par minute.`, apply: { sets: 8, target: String(reps + 1) }, label: `8 min × ${reps + 1}` };
+  }
   const work = sets.filter(s => s.w === top).slice(0, it.sets);
   if (work.length < it.sets || work.some(s => s.r < range.hi)) return null;
   if (top === 0) return { w: 0, r: range.hi + 1, text: `${work.length} × ${range.hi}+ réussi au poids du corps → vise ${range.hi + 1} reps ou ajoute du lest.` };
@@ -931,7 +955,7 @@ function celebrate(kind) {
 function vibrate(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
 
 // ---------- État de l'interface ----------
-const ui = { tab: db.active ? 'programmes' : 'seance', exId: null, editProg: null, summary: null, badges: false, rewards: false, chrono: null, search: '', w: 0, r: 10, progEx: null, alerted: null };
+const ui = { tab: db.active ? 'programmes' : 'seance', exId: null, editProg: null, summary: null, badges: false, rewards: false, emom: null, chrono: null, search: '', w: 0, r: 10, progEx: null, alerted: null };
 
 // ---------- Rendu ----------
 function render() {
@@ -1018,12 +1042,13 @@ function viewExercise() {
   const prev = sessions.filter(s => s.day !== today).pop();
   const prevMax = Math.max(0, ...db.sets.filter(s => s.exId === ex.id).map(s => s.w));
 
+  const emom = ctx && ctx.item.mode === 'emom';
   const targetLine = ctx ? `
-    <div class="target">Objectif : <b>${ctx.item.sets} × ${esc(ctx.item.target)}</b>${ctx.item.rest ? ' · repos ' + esc(ctx.item.rest) : ''}</div>
+    <div class="target">Objectif : <b>${emom ? `EMOM ${ctx.item.sets} min · ${esc(ctx.item.target)} reps par minute` : `${ctx.item.sets} × ${esc(ctx.item.target)}`}</b>${ctx.item.rest ? ' · repos ' + esc(ctx.item.rest) : ''}</div>
     ${ctx.item.tip ? `<div class="tip">💡 ${esc(ctx.item.tip)}</div>` : ''}` : '';
   const sug = !shown.length && prev ? suggestFor(ex.id, prev.sets) : null;
   const lastLine = prev
-    ? `<div class="last">Dernière fois (${esc(relDay(prev.day))}) : <b>${prev.sets.map(fmtSet).join(' · ')}</b></div>`
+    ? `<div class="last">Dernière fois (${esc(relDay(prev.day))}) : <b>${fmtSets(prev.sets)}</b></div>`
     : `<div class="last">Première fois sur cet exercice 💪</div>`;
 
   // Record : première série atteignant le poids max (pas sur la toute première séance)
@@ -1048,12 +1073,20 @@ function viewExercise() {
   const repsLabel = kind === 's' ? 'Durée (secondes)' : kind === 'min' ? 'Durée (minutes)' : 'Répétitions';
   const timed = kind !== 'reps';
   const running = ui.chrono && ui.chrono.exId === ex.id;
+  const emomRun = ui.emom && ui.emom.exId === ex.id;
 
   $('#app').innerHTML = `
     ${targetLine}
     ${lastLine}
-    ${sug ? `<div class="suggest">📈 ${esc(sug.text)}</div>` : ''}
-    ${running ? `<div class="card chrono">
+    ${sug ? `<div class="suggest">📈 ${esc(sug.text)}${sug.apply && ctx ? `<br><button class="link" data-act="applysug">Appliquer : ${esc(sug.label)} ›</button>` : ''}</div>` : ''}
+    ${emomRun ? `<div class="card chrono">
+      <div class="small muted">EMOM · ${ui.emom.reps} reps par minute${ui.emom.w > 0 ? ' · ' + fmtW(ui.emom.w) : ''}</div>
+      <div class="emom-min" id="emomMin">Minute ${Math.min(ui.emom.minutes, ui.emom.logged + 1)} / ${ui.emom.minutes}</div>
+      <div class="chrono-time" id="emomLeft">1:00</div>
+      <div class="small muted" style="margin-bottom:8px">avant la minute suivante · bip au début de chaque minute</div>
+      <div class="progress big"><div id="emomBar" style="width:0%"></div></div>
+      <button class="secondary danger" data-act="estop">■ Arrêter l’EMOM</button>
+    </div>` : running ? `<div class="card chrono">
       <div class="small muted">Série ${n}${ctx ? ' / ' + ctx.item.sets : ''} · objectif ${ui.chrono.planned} ${kind}</div>
       <div class="chrono-time" id="chronoLeft">${mmss(Math.ceil(Math.max(0, ui.chrono.dur - (Date.now() - ui.chrono.start) / 1000)))}</div>
       <div class="progress big"><div id="chronoBar" style="width:0%"></div></div>
@@ -1071,7 +1104,7 @@ function viewExercise() {
           </div>
         </div>` : ''}
         <div class="stepper">
-          <label for="r">${repsLabel}</label>
+          <label for="r">${emom ? 'Répétitions par minute' : repsLabel}</label>
           <div class="ctrl">
             <button data-act="r-" aria-label="Moins">−</button>
             <input id="r" inputmode="numeric" value="${ui.r}" autocomplete="off">
@@ -1080,9 +1113,10 @@ function viewExercise() {
         </div>
       </div>
       ${timed ? `<button class="${done ? 'secondary' : 'primary'}" data-act="cstart">▶ Lancer le chrono</button>` : ''}
-      <button class="${done || timed ? 'secondary' : 'primary'}" data-act="add">${timed && !done ? '✓ Noter sans chrono' : addLabel}</button>
+      ${emom ? `<button class="${done ? 'secondary' : 'primary'}" data-act="estart">▶ Lancer l’EMOM (${ctx.item.sets} min)</button>` : ''}
+      <button class="${done || timed || emom ? 'secondary' : 'primary'}" data-act="add">${timed && !done ? '✓ Noter sans chrono' : emom && !done ? '✓ Noter une minute à la main' : addLabel}</button>
     </div>`}
-    ${done ? `<button class="primary" data-act="next" style="margin-bottom:12px">${next ? 'Exercice suivant : ' + esc((exById(next.exId) || {}).name || '') + ' ›' : 'Dernier exercice fait ✓ Retour à la séance'}</button>` : ''}
+    ${done && !emomRun ? `<button class="primary" data-act="next" style="margin-bottom:12px">${next ? 'Exercice suivant : ' + esc((exById(next.exId) || {}).name || '') + ' ›' : 'Dernier exercice fait ✓ Retour à la séance'}</button>` : ''}
     ${shown.length ? `<div class="section-title">${ctx ? 'Cette séance' : 'Aujourd’hui'}</div><div class="sets">${setsHtml}</div>` : ''}
     ${!ctx ? `<div class="small muted" style="margin:14px 4px 0">Astuce : mets 0 kg pour un exercice au poids du corps (PDC). Touche une série pour reprendre ses valeurs.</div>` : ''}`;
 }
@@ -1105,6 +1139,11 @@ function prefill(id) {
   } else {
     ui.w = 0;
     ui.r = (ctx && firstNum(ctx.item.target)) || (kindOf(id) === 's' ? 30 : kindOf(id) === 'min' ? 10 : 10);
+  }
+  // En EMOM, les reps par minute viennent du programme (pas d'une autre séance)
+  if (ctx && ctx.item.mode === 'emom') {
+    const sug = last && dayKey(last.t) !== todayKey() ? suggestFor(id, sets.filter(s => dayKey(s.t) === dayKey(last.t))) : null;
+    if (!(sug && sug.apply && runSets(id).length === 0)) ui.r = firstNum(ctx.item.target) || ui.r;
   }
 }
 
@@ -1181,7 +1220,7 @@ async function keepAwake(on) {
   // L'état a pu changer pendant la demande
   if (on !== wantAwake()) updateWakeLock();
 }
-const wantAwake = () => !!ui.chrono || (!!db.active && db.settings.awake);
+const wantAwake = () => !!ui.chrono || !!ui.emom || (!!db.active && db.settings.awake);
 function updateWakeLock() { keepAwake(wantAwake()); }
 const unitSec = exId => kindOf(exId) === 'min' ? 60 : 1;
 function startChrono() {
@@ -1216,6 +1255,46 @@ function tickChrono() {
   if (bar) bar.style.width = (100 - left / c.dur * 100).toFixed(1) + '%';
 }
 setInterval(tickChrono, 250);
+
+// EMOM : une série au début de chaque minute, notée automatiquement à la fin de la minute
+function startEmom() {
+  readInputs();
+  const ctx = progCtx();
+  if (!ctx || ui.r < 1) { toast('Indique le nombre de répétitions'); return; }
+  unlockAudio();
+  ui.emom = { exId: ui.exId, start: Date.now(), minutes: ctx.item.sets, reps: ui.r, w: ui.w, logged: 0, beeped: 0 };
+  beep(1); vibrate(200);
+  updateWakeLock(); render();
+}
+function stopEmom() {
+  const e = ui.emom;
+  if (!e) return;
+  ui.emom = null; updateWakeLock(); render();
+  toast(`EMOM arrêtée : ${e.logged} minute${e.logged > 1 ? 's' : ''} notée${e.logged > 1 ? 's' : ''}`);
+}
+function tickEmom() {
+  const e = ui.emom;
+  if (!e) return;
+  const el = (Date.now() - e.start) / 1000;
+  const done = Math.min(e.minutes, Math.floor(el / 60));
+  while (e.logged < done) {
+    e.logged++;
+    if (e.logged === e.minutes) ui.emom = null; // dernière minute : on sort avant de noter pour afficher la fin
+    recordSet(e.exId, e.w, e.reps);
+  }
+  if (!ui.emom) {
+    beep(3); vibrate([300, 150, 300]); updateWakeLock(); render();
+    announce([`EMOM terminée 💪 ${e.minutes} × ${e.reps}`]);
+    return;
+  }
+  // Bip au début de chaque nouvelle minute (pas si l'app revient d'une longue pause)
+  if (done > e.beeped) { e.beeped = done; if (el - done * 60 < 2) { beep(1); vibrate(200); } }
+  const m = $('#emomMin'), left = $('#emomLeft'), bar = $('#emomBar');
+  if (m) m.textContent = `Minute ${done + 1} / ${e.minutes}`;
+  if (left) left.textContent = mmss(Math.max(1, Math.ceil(60 - (el - done * 60))));
+  if (bar) bar.style.width = (el / (e.minutes * 60) * 100).toFixed(1) + '%';
+}
+setInterval(tickEmom, 250);
 // Le téléphone relâche le verrou quand l'app passe en arrière-plan : on le reprend au retour
 document.addEventListener('visibilitychange', () => { if (!document.hidden) updateWakeLock(); });
 
@@ -1252,7 +1331,7 @@ function viewRun() {
     return `<button class="row" data-act="open" data-id="${it.exId}">
       <span class="step ${ok ? 'ok' : ''}">${ok ? '✓' : i + 1}</span>
       <div class="grow"><div class="title">${esc(ex ? ex.name : '?')}</div>
-        <div class="sub">${it.sets} × ${esc(it.target)}${it.rest ? ' · repos ' + esc(it.rest) : ''}</div></div>
+        <div class="sub">${it.mode === 'emom' ? `EMOM ${it.sets} min × ${esc(it.target)}` : `${it.sets} × ${esc(it.target)}`}${it.rest ? ' · repos ' + esc(it.rest) : ''}</div></div>
       <span class="count ${ok ? 'ok' : ''}">${n}/${it.sets}</span><span class="chev">›</span></button>`;
   }).join('');
   const pct = total ? Math.round(done / total * 100) : 0;
@@ -1350,8 +1429,8 @@ function viewSummary() {
       arrow = c > 0 ? '<span class="arrow up">↑</span>' : c < 0 ? '<span class="arrow down">↓</span>' : '<span class="arrow">=</span>';
     }
     return `<div class="ex"><div class="name">${esc(ex ? ex.name : 'Exercice supprimé')}${arrow}</div>
-      <div class="detail">${mine.map(fmtSet).join(' · ')}</div>
-      ${before.length ? `<div class="small muted">Avant (${esc(relDay(dayKey(before[0].t)))}) : ${before.map(fmtSet).join(' · ')}</div>` : ''}</div>`;
+      <div class="detail">${fmtSets(mine)}</div>
+      ${before.length ? `<div class="small muted">Avant (${esc(relDay(dayKey(before[0].t)))}) : ${fmtSets(before)}</div>` : ''}</div>`;
   }).join('');
 
   const p = sm.progId && progById(sm.progId);
@@ -1387,14 +1466,18 @@ function viewProgEdit() {
   setTitle('Modifier');
   const exs = [...db.exercises].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const opts = sel => exs.map(e => `<option value="${e.id}" ${e.id === sel ? 'selected' : ''}>${esc(e.name)}</option>`).join('');
-  const items = p.items.map((it, i) => `
+  const items = p.items.map((it, i) => { const em = it.mode === 'emom'; return `
     <div class="card">
       <div class="item-head"><span class="step">${i + 1}</span>
         <select class="field" data-if="exId" data-i="${i}">${opts(it.exId)}</select></div>
+      <select class="field" data-if="mode" data-i="${i}" style="margin-top:8px">
+        <option value="">Séries classiques</option>
+        <option value="emom" ${em ? 'selected' : ''}>EMOM (une série chaque minute)</option>
+      </select>
       <div class="item-grid">
-        <label>Séries<input class="field" inputmode="numeric" data-if="sets" data-i="${i}" value="${it.sets}"></label>
-        <label>Objectif<input class="field" data-if="target" data-i="${i}" value="${esc(it.target)}" placeholder="8–12"></label>
-        <label>Repos<input class="field" data-if="rest" data-i="${i}" value="${esc(it.rest)}" placeholder="90 s"></label>
+        <label>${em ? 'Minutes' : 'Séries'}<input class="field" inputmode="numeric" data-if="sets" data-i="${i}" value="${it.sets}"></label>
+        <label>${em ? 'Reps / min' : 'Objectif'}<input class="field" data-if="target" data-i="${i}" value="${esc(it.target)}" placeholder="${em ? '3' : '8–12'}"></label>
+        ${em ? '' : `<label>Repos<input class="field" data-if="rest" data-i="${i}" value="${esc(it.rest)}" placeholder="90 s"></label>`}
       </div>
       <label class="lbl">Conseil (facultatif)</label>
       <input class="field" data-if="tip" data-i="${i}" value="${esc(it.tip || '')}">
@@ -1403,7 +1486,7 @@ function viewProgEdit() {
         <button data-act="idown" data-i="${i}" aria-label="Descendre">↓</button>
         <button data-act="idel" data-i="${i}" class="danger">Retirer</button>
       </div>
-    </div>`).join('');
+    </div>`; }).join('');
   $('#app').innerHTML = `
     <div class="card">
       <label class="lbl" for="pname">Nom</label>
@@ -1445,7 +1528,7 @@ function viewHistory() {
       if (kindOf(exId) === 'reps') sets.forEach(s => volume += s.w * s.r);
       const ex = exById(exId);
       return `<div class="ex"><div class="name">${esc(ex ? ex.name : 'Exercice supprimé')}</div>
-        <div class="detail">${sets.map(fmtSet).join(' · ')}</div></div>`;
+        <div class="detail">${fmtSets(sets)}</div></div>`;
     }).join('');
     return `<div class="card day">
       <h3>${esc(fmtDay(day))}</h3>
@@ -1607,7 +1690,7 @@ function viewProgress() {
 
   const rows = [...sessions].reverse().map(s => `
     <div class="ex"><div class="name">${esc(fmtDay(s.day, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }))}</div>
-    <div class="detail">${s.sets.map(fmtSet).join(' · ')}</div></div>`).join('');
+    <div class="detail">${fmtSets(s.sets)}</div></div>`).join('');
 
   $('#app').innerHTML = `
     ${profileCard()}
@@ -1732,7 +1815,7 @@ function updateTimer() {
   const el = $('#timer');
   const last = db.sets.reduce((m, s) => (!m || s.t > m.t ? s : m), null);
   const sec = last ? Math.floor((Date.now() - last.t) / 1000) : 0;
-  if (!last || sec > 15 * 60 || (ui.tab !== 'seance' && ui.tab !== 'programmes') || ui.editProg || ui.summary || ui.chrono) { el.hidden = true; return; }
+  if (!last || sec > 15 * 60 || (ui.tab !== 'seance' && ui.tab !== 'programmes') || ui.editProg || ui.summary || ui.chrono || ui.emom) { el.hidden = true; return; }
   let rest = 0;
   if (db.active && last.t >= db.active.start) {
     const p = progById(db.active.progId);
@@ -1790,7 +1873,7 @@ $('#app').addEventListener('input', e => {
   if (t.dataset.pf) { p[t.dataset.pf] = t.value; save(); }
   if (t.dataset.if && t.tagName !== 'SELECT') {
     const it = p.items[+t.dataset.i];
-    if (t.dataset.if === 'sets') { const n = Math.round(num(t.value)); if (n >= 1) it.sets = Math.min(n, 20); }
+    if (t.dataset.if === 'sets') { const n = Math.round(num(t.value)); if (n >= 1) it.sets = Math.min(n, 30); }
     else it[t.dataset.if] = t.value.trim();
     save();
   }
@@ -1807,6 +1890,13 @@ $('#app').addEventListener('change', e => {
   const p = ui.editProg && progById(ui.editProg);
   if (!p) return;
   if (t.dataset.if === 'exId') { p.items[+t.dataset.i].exId = t.value; save(); }
+  if (t.dataset.if === 'mode') {
+    const it = p.items[+t.dataset.i];
+    if (t.value === 'emom') {
+      Object.assign(it, { mode: 'emom', sets: 8, target: String(Math.max(1, Math.floor(firstNum(it.target) / 2)) || 3), rest: '' });
+    } else { delete it.mode; Object.assign(it, { sets: 3, target: '8–12', rest: '90 s' }); }
+    save(); render();
+  }
   if (t.dataset.if === 'sets') render(); // corrige l'affichage si la saisie était invalide
   if (t.id === 'addItem' && t.value) {
     let exId = t.value;
@@ -1867,6 +1957,19 @@ $('#app').addEventListener('click', e => {
     }
     case 'add': unlockAudio(); addSet(); break;
     case 'cstart': startChrono(); break;
+    case 'estart': startEmom(); break;
+    case 'estop': if (confirm('Arrêter l’EMOM ? Les minutes déjà faites restent notées.')) stopEmom(); break;
+    case 'applysug': {
+      const ctx = progCtx();
+      const prevSets = lastSessionBefore(ui.exId, db.active ? db.active.start : Date.now());
+      const sg = ctx && suggestFor(ui.exId, prevSets);
+      if (sg && sg.apply) {
+        Object.assign(ctx.item, sg.apply); save();
+        ui.w = sg.w; ui.r = sg.r; render();
+        toast('Programme mis à jour : ' + sg.label + ' ✓');
+      }
+      break;
+    }
     case 'cstop': stopChrono(true); break;
     case 'ccancel': stopChrono(false); break;
     case 'sumclose': $('#back').click(); break;
