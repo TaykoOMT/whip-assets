@@ -633,7 +633,15 @@ function suggestFor(exId, sets) {
   }
   const work = sets.filter(s => s.w === top).slice(0, it.sets);
   if (work.length < it.sets || work.some(s => s.r < range.hi)) return null;
-  if (top === 0) return { w: 0, r: range.hi + 1, text: `${work.length} × ${range.hi}+ réussi au poids du corps → ajoute du lest (+2,5 kg) et repars à ${range.lo} reps, ou vise ${range.hi + 1} reps sans lest.` };
+  if (top === 0) {
+    // Poids du corps en force (≤ 8 reps, ex. tractions 4–6) : on leste et on repart du bas de la fourchette.
+    // En endurance (pompes 15–25…), on ajoute des répétitions.
+    if (range.hi <= 8) {
+      const lest = db.settings.step;
+      return { w: lest, r: range.lo, text: `${work.length} × ${range.hi}+ réussi au poids du corps → leste-toi de ${fmtNum(lest)} kg et repars à ${range.lo} reps (déjà pré-rempli). Pas de lest ? Vise ${range.hi + 1} reps.` };
+    }
+    return { w: 0, r: range.hi + 1, text: `${work.length} × ${range.hi}+ réussi au poids du corps → vise ${range.hi + 1} reps.` };
+  }
   const w = round2(top + db.settings.step);
   return { w, r: range.lo, text: `${work.length} × ${range.hi}+ réussi à ${fmtNum(top)} kg → passe à ${fmtNum(w)} kg (vise ${range.lo} reps).` };
 }
