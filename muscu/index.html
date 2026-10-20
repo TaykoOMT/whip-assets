@@ -550,11 +550,12 @@ const mmss = sec => Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0
 
 const exById = id => db.exercises.find(e => e.id === id);
 const kindOf = exId => (exById(exId) || {}).kind || 'reps';
-function fmtSet(s) {
+function fmtSetBase(s) {
   const k = kindOf(s.exId);
   if (k !== 'reps') return (s.w > 0 ? fmtNum(s.w) + ' kg · ' : '') + s.r + ' ' + k;
   return (s.w > 0 ? fmtNum(s.w) : 'PDC') + ' × ' + s.r;
 }
+const fmtSet = s => (s.test ? '🎯 ' : '') + fmtSetBase(s);
 // « PDC × 3 · PDC × 3 · PDC × 3 » → « PDC × 3 (×3) »
 function fmtSets(list) {
   const groups = [];
@@ -564,7 +565,7 @@ function fmtSets(list) {
   }
   return groups.map(g => g.n >= 3 ? `${g.f} (×${g.n})` : Array(g.n).fill(g.f).join(' · ')).join(' · ');
 }
-const fmtSetLong = s => kindOf(s.exId) === 'reps' ? fmtW(s.w) + ' × ' + s.r : fmtSet(s);
+const fmtSetLong = s => kindOf(s.exId) === 'reps' ? (s.test ? '🎯 ' : '') + fmtW(s.w) + ' × ' + s.r : fmtSet(s);
 
 function dayKey(t) {
   const d = new Date(t);
@@ -599,7 +600,7 @@ function sessionsOf(exId) {
 
 // Programme en cours
 const progById = id => db.programs.find(p => p.id === id);
-const runSets = exId => db.active ? setsOf(exId).filter(s => s.t >= db.active.start) : [];
+const runSets = exId => db.active ? setsOf(exId).filter(s => s.t >= db.active.start && !s.test) : [];
 function progCtx() {
   if (ui.tab !== 'programmes' || !db.active) return null;
   const p = progById(db.active.progId);
@@ -621,6 +622,7 @@ function parseRange(str) {
 }
 // Double progression : si toutes les séries de travail atteignent le haut de la fourchette, on monte la charge
 function suggestFor(exId, sets) {
+  sets = sets.filter(s => !s.test);
   const it = itemFor(exId);
   const range = it && parseRange(it.target);
   if (!range || kindOf(exId) !== 'reps' || !sets.length) return null;
@@ -969,7 +971,7 @@ function celebrate(kind) {
 function vibrate(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
 
 // ---------- État de l'interface ----------
-const ui = { tab: db.active ? 'programmes' : 'seance', exId: null, editProg: null, summary: null, badges: false, rewards: false, emom: null, chrono: null, search: '', w: 0, r: 10, progEx: null, alerted: null };
+const ui = { tab: db.active ? 'programmes' : 'seance', exId: null, editProg: null, summary: null, badges: false, rewards: false, emom: null, test: false, chrono: null, search: '', w: 0, r: 10, progEx: null, alerted: null };
 
 // ---------- Rendu ----------
 function render() {
@@ -1089,15 +1091,51 @@ function viewExercise() {
   const running = ui.chrono && ui.chrono.exId === ex.id;
   const emomRun = ui.emom && ui.emom.exId === ex.id;
 
+  if (ui.test && kind === 'reps') {
+    const tests = setsOf(ex.id).filter(s => s.test);
+    const lastTest = tests[tests.length - 1];
+    const hasEmom = db.programs.some(p => p.items.some(it => it.exId === ex.id && it.mode === 'emom'));
+    $('#app').innerHTML = `
+      <div class="card">
+        <h4>🎯 Test de max</h4>
+        <div class="small muted">Échauffe-toi (quelques séries légères), repose-toi 3 min, puis fais <b>une seule série</b> avec le maximum de répétitions propres : amplitude complète, sans élan.</div>
+        ${lastTest ? `<div class="small" style="margin-top:8px">Dernier test : <b>${esc(fmtSetLong(lastTest))}</b> (${esc(relDay(dayKey(lastTest.t)))})</div>` : ''}
+        ${hasEmom ? '<div class="small" style="margin-top:6px">⚙️ Test au poids du corps : ton EMOM sera réglée sur environ un tiers de ce max.</div>' : ''}
+      </div>
+      <div class="card">
+        <div class="steppers">
+          <div class="stepper">
+            <label for="w">Lest (kg) · 0 = poids du corps</label>
+            <div class="ctrl">
+              <button data-act="w-" aria-label="Moins de lest">−</button>
+              <input id="w" inputmode="decimal" value="${fmtNum(ui.w)}" autocomplete="off">
+              <button data-act="w+" aria-label="Plus de lest">+</button>
+            </div>
+          </div>
+          <div class="stepper">
+            <label for="r">Répétitions réussies</label>
+            <div class="ctrl">
+              <button data-act="r-" aria-label="Moins">−</button>
+              <input id="r" inputmode="numeric" value="${ui.r}" autocomplete="off">
+              <button data-act="r+" aria-label="Plus">+</button>
+            </div>
+          </div>
+        </div>
+        <button class="primary" data-act="tsave">Enregistrer mon max</button>
+        <button class="secondary" data-act="tcancel">Annuler</button>
+      </div>`;
+    return;
+  }
+
   $('#app').innerHTML = `
     ${targetLine}
     ${lastLine}
     ${sug ? `<div class="suggest">📈 ${esc(sug.text)}${sug.apply && ctx ? `<br><button class="link" data-act="applysug">Appliquer : ${esc(sug.label)} ›</button>` : ''}</div>` : ''}
     ${emomRun ? `<div class="card chrono">
       <div class="small muted">EMOM · ${ui.emom.reps} reps par minute${ui.emom.w > 0 ? ' · ' + fmtW(ui.emom.w) : ''}</div>
-      <div class="emom-min" id="emomMin">Minute ${Math.min(ui.emom.minutes, ui.emom.logged + 1)} / ${ui.emom.minutes}</div>
-      <div class="chrono-time" id="emomLeft">1:00</div>
-      <div class="small muted" style="margin-bottom:8px">avant la minute suivante · bip au début de chaque minute</div>
+      <div class="emom-min" id="emomMin">${Date.now() < ui.emom.start ? 'Prépare-toi…' : `Minute ${Math.min(ui.emom.minutes, ui.emom.logged + 1)} / ${ui.emom.minutes}`}</div>
+      <div class="chrono-time" id="emomLeft">${Date.now() < ui.emom.start ? mmss(EMOM_LEAD) : '1:00'}</div>
+      <div class="small muted" style="margin-bottom:8px">avant la minute suivante · bip, bip, bip… puis GO</div>
       <div class="progress big"><div id="emomBar" style="width:0%"></div></div>
       <button class="secondary danger" data-act="estop">■ Arrêter l’EMOM</button>
     </div>` : running ? `<div class="card chrono">
@@ -1132,12 +1170,14 @@ function viewExercise() {
     </div>`}
     ${done && !emomRun ? `<button class="primary" data-act="next" style="margin-bottom:12px">${next ? 'Exercice suivant : ' + esc((exById(next.exId) || {}).name || '') + ' ›' : 'Dernier exercice fait ✓ Retour à la séance'}</button>` : ''}
     ${shown.length ? `<div class="section-title">${ctx ? 'Cette séance' : 'Aujourd’hui'}</div><div class="sets">${setsHtml}</div>` : ''}
-    ${!ctx ? `<div class="small muted" style="margin:14px 4px 0">Astuce : mets 0 kg pour un exercice au poids du corps (PDC). Touche une série pour reprendre ses valeurs.</div>` : ''}`;
+    ${!ctx ? `<div class="small muted" style="margin:14px 4px 0">Astuce : mets 0 kg pour un exercice au poids du corps (PDC). Touche une série pour reprendre ses valeurs.</div>` : ''}
+    ${kind === 'reps' && !running && !emomRun ? '<button class="link" data-act="ttest" style="margin:14px 4px 0">🎯 Faire un test de max</button>' : ''}`;
 }
 
 // Pré-remplit poids / répétitions avec les dernières valeurs connues
 function prefill(id) {
-  const sets = setsOf(id);
+  ui.test = false;
+  const sets = setsOf(id).filter(s => !s.test);
   const last = sets[sets.length - 1];
   const ctx = progCtx();
   if (last) {
@@ -1183,21 +1223,24 @@ function addSet() {
   recordSet(ui.exId, ui.w, ui.r);
 }
 
-function recordSet(exId, w, r) {
+function recordSet(exId, w, r, props) {
   const prevMax = Math.max(0, ...db.sets.filter(s => s.exId === exId).map(s => s.w));
   const hadSets = db.sets.some(s => s.exId === exId);
-  db.sets.push({ id: uid(), exId, w, r, t: Date.now() });
+  const set = Object.assign({ id: uid(), exId, w, r, t: Date.now() }, props);
+  db.sets.push(set);
   save();
   vibrate(30);
   const ctx = progCtx();
   const isPR = hadSets && w > prevMax;
   let msg = 'Série enregistrée ✓';
-  if (isPR) msg = '🏆 Nouveau record : ' + fmtW(w) + ' !';
+  if (set.test) msg = `🎯 Max enregistré : ${fmtW(w)} × ${r}`;
+  else if (isPR) msg = '🏆 Nouveau record : ' + fmtW(w) + ' !';
   else if (ctx && ctx.item.exId === exId && runSets(exId).length === ctx.item.sets) msg = 'Exercice terminé ✓';
   const extra = syncProgress(true);
   if (extra.length) announce([msg, ...extra]); else toast(msg);
   render();
   if (isPR || extra.length) celebrate();
+  return set;
 }
 
 // ---------- Chrono (gainage, killy, course…) ----------
@@ -1206,18 +1249,19 @@ function unlockAudio() {
   // Sur iPhone, le son doit être autorisé par un geste de l'utilisateur
   try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); } catch (e) {}
 }
-function beep(times) {
+function beep(times, freq, len) {
+  freq = freq || 880; len = len || 0.25;
   try {
     unlockAudio();
     for (let i = 0; i < times; i++) {
       const o = audioCtx.createOscillator(), g = audioCtx.createGain();
       const t0 = audioCtx.currentTime + i * 0.35;
-      o.type = 'sine'; o.frequency.value = 880;
+      o.type = 'sine'; o.frequency.value = freq;
       g.gain.setValueAtTime(0.0001, t0);
       g.gain.exponentialRampToValueAtTime(0.6, t0 + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.25);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
       o.connect(g); g.connect(audioCtx.destination);
-      o.start(t0); o.stop(t0 + 0.3);
+      o.start(t0); o.stop(t0 + len + 0.05);
     }
   } catch (e) {}
 }
@@ -1270,14 +1314,17 @@ function tickChrono() {
 }
 setInterval(tickChrono, 250);
 
-// EMOM : une série au début de chaque minute, notée automatiquement à la fin de la minute
+// EMOM : une série au début de chaque minute, notée automatiquement à la fin de la minute.
+// Trois petits bips (3-2-1) annoncent chaque nouvelle minute, puis un bip plus long donne le départ.
+const EMOM_LEAD = 5;
 function startEmom() {
   readInputs();
   const ctx = progCtx();
   if (!ctx || ui.r < 1) { toast('Indique le nombre de répétitions'); return; }
   unlockAudio();
-  ui.emom = { exId: ui.exId, start: Date.now(), minutes: ctx.item.sets, reps: ui.r, w: ui.w, logged: 0, beeped: 0 };
-  beep(1); vibrate(200);
+  // 5 s pour se placer sous la barre ; la minute 1 démarre ensuite
+  ui.emom = { exId: ui.exId, start: Date.now() + EMOM_LEAD * 1000, minutes: ctx.item.sets, reps: ui.r, w: ui.w, logged: 0, beeped: -1, cd: null };
+  vibrate(30);
   updateWakeLock(); render();
 }
 function stopEmom() {
@@ -1301,12 +1348,18 @@ function tickEmom() {
     announce([`EMOM terminée 💪 ${e.minutes} × ${e.reps}`]);
     return;
   }
-  // Bip au début de chaque nouvelle minute (pas si l'app revient d'une longue pause)
-  if (done > e.beeped) { e.beeped = done; if (el - done * 60 < 2) { beep(1); vibrate(200); } }
+  // Départ de chaque nouvelle minute (pas si l'app revient d'une longue pause)
+  if (done > e.beeped) { e.beeped = done; if (el - done * 60 < 2) { beep(1, 988, 0.4); vibrate(200); } }
+  // 3-2-1 avant la prochaine minute (sauf après la dernière)
+  const toNext = (done + 1) * 60 - el, sec = Math.ceil(toNext);
+  if (done + 1 < e.minutes && sec >= 1 && sec <= 3 && e.cd !== `${done}:${sec}`) {
+    e.cd = `${done}:${sec}`;
+    if (sec - toNext < 0.5) beep(1, 660, 0.12);
+  }
   const m = $('#emomMin'), left = $('#emomLeft'), bar = $('#emomBar');
-  if (m) m.textContent = `Minute ${done + 1} / ${e.minutes}`;
-  if (left) left.textContent = mmss(Math.max(1, Math.ceil(60 - (el - done * 60))));
-  if (bar) bar.style.width = (el / (e.minutes * 60) * 100).toFixed(1) + '%';
+  if (m) m.textContent = el < 0 ? 'Prépare-toi…' : `Minute ${done + 1} / ${e.minutes}`;
+  if (left) left.textContent = mmss(Math.max(1, sec));
+  if (bar) bar.style.width = (Math.max(0, el) / (e.minutes * 60) * 100).toFixed(1) + '%';
 }
 setInterval(tickEmom, 250);
 // Le téléphone relâche le verrou quand l'app passe en arrière-plan : on le reprend au retour
@@ -1702,6 +1755,17 @@ function viewProgress() {
   const repsName = kind === 'reps' ? 'Max reps' : 'Durée max';
   const chartName = kind === 'reps' ? (useReps ? 'Répétitions max par séance' : 'Charge max par séance (kg)') : `Durée max par séance (${kind})`;
 
+  const tests = all.filter(s => s.test);
+  const testsHtml = tests.length ? `
+    <div class="section-title">🎯 Tests de max</div>
+    <div class="card chart">
+      ${tests.length >= 2 ? chart(tests.map(s => ({ day: dayKey(s.t), v: s.r }))) : ''}
+      <div class="day">${[...tests].reverse().map((s, i, arr) => {
+        const d = arr[i + 1] && arr[i + 1].w === s.w ? s.r - arr[i + 1].r : 0;
+        return `<div class="ex"><div class="name">${esc(fmtDay(dayKey(s.t), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }))}</div>
+          <div class="detail">${esc(fmtSetLong(s))}${d ? ` <span class="arrow ${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : ''}${d}</span>` : ''}</div></div>`;
+      }).join('')}</div>
+    </div>` : '';
   const rows = [...sessions].reverse().map(s => `
     <div class="ex"><div class="name">${esc(fmtDay(s.day, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }))}</div>
     <div class="detail">${fmtSets(s.sets)}</div></div>`).join('');
@@ -1721,6 +1785,7 @@ function viewProgress() {
       <div class="small muted" style="margin-bottom:6px">${chartName}</div>
       ${chart(points.map(p => ({ day: p.day, v: useReps ? p.reps : p.w })))}
     </div>
+    ${testsHtml}
     <div class="section-title">Détail des séances</div>
     <div class="card day">${rows}</div>`;
 }
@@ -1972,6 +2037,37 @@ $('#app').addEventListener('click', e => {
     case 'add': unlockAudio(); addSet(); break;
     case 'cstart': startChrono(); break;
     case 'estart': startEmom(); break;
+    case 'ttest': {
+      const tests = setsOf(ui.exId).filter(s => s.test);
+      const last = tests[tests.length - 1];
+      ui.test = true;
+      ui.w = last ? last.w : 0;
+      const bw = setsOf(ui.exId).filter(s => s.w === 0).map(s => s.r);
+      ui.r = last ? last.r : bw.length ? Math.max(...bw) : 10;
+      render(); window.scrollTo(0, 0);
+      break;
+    }
+    case 'tcancel': prefill(ui.exId); render(); break;
+    case 'tsave': {
+      readInputs();
+      if (ui.r < 1) { toast('Indique le nombre de répétitions'); break; }
+      const set = recordSet(ui.exId, ui.w, ui.r, { test: true });
+      // Test au poids du corps : les EMOM de cet exercice passent à ~1/3 du max
+      const msgs = [];
+      if (set.w === 0) {
+        const reps = Math.max(1, Math.round(set.r / 3));
+        db.programs.forEach(pr => pr.items.forEach(it => {
+          if (it.exId === set.exId && it.mode === 'emom' && it.target !== String(reps)) {
+            it.target = String(reps);
+            msgs.push(`⚙️ ${pr.name.split(' — ')[0]} : EMOM réglée sur ${reps} reps par minute`);
+          }
+        }));
+      }
+      save();
+      prefill(ui.exId); render();
+      if (msgs.length) announce(msgs);
+      break;
+    }
     case 'estop': if (confirm('Arrêter l’EMOM ? Les minutes déjà faites restent notées.')) stopEmom(); break;
     case 'applysug': {
       const ctx = progCtx();

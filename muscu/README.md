@@ -21,6 +21,10 @@ et garde tes données **sur ton téléphone** (rien n'est envoyé sur internet).
   (ex. tractions 8 min × 3 en séance C). Bip au début de chaque minute, une série notée
   automatiquement par minute, et progression proposée : +1 min jusqu'à 12, puis 8 min avec
   +1 rep. Se règle dans Programmes → Modifier.
+- **Test de max** (lien « 🎯 Faire un test de max » sur un exercice) : enregistre ton maximum,
+  suivi dans Progrès, sans compter dans la séance ni les suggestions. Un test au poids du corps
+  règle automatiquement les EMOM de l'exercice sur environ un tiers du max.
+- **EMOM** : 5 s pour se mettre en place, puis 3 petits bips avant chaque minute et un bip de départ.
 - **Exercices en durée** : gainage, killy, course… se notent en secondes ou en minutes
   (Réglages → Exercices → type). Bouton **▶ Lancer le chrono** : compte à rebours, écran
   maintenu allumé, bip + vibration à la fin et série notée automatiquement.
