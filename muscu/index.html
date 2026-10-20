@@ -397,7 +397,7 @@ const SEED_PROGRAMS = [
     name: 'Séance A — Haut du corps',
     note: 'Échauffement : 5–8 min de vélo ou de marche, rotations des épaules et quelques séries légères.',
     items: [
-      ['Tractions pronation', 4, '4–5', '2–3 min'],
+      ['Tractions pronation', 4, '4–6', '2–3 min'],
       ['Développé incliné haltères', 3, '8–12', '90–120 s'],
       ['Rowing poulie basse', 3, '8–12', '90–120 s'],
       ['Développé militaire haltères', 2, '8–12', '90 s'],
@@ -502,7 +502,13 @@ function migrate(d) {
       Object.assign(it, { mode: 'emom', sets: 8, target: '3', rest: '', tip: 'EMOM : au début de chaque minute, fais tes tractions, puis repose-toi le reste de la minute. Chaque rep propre : menton au-dessus de la barre, bras tendus en bas.' });
     }
   }
-  d.v = 5;
+  if ((d.v || 1) < 6) {
+    // Séance A : tractions 4 × 4–6 (plage de force avec une rep de marge), si non modifiées
+    const A = d.programs.find(p => norm(p.name) === norm('Séance A — Haut du corps'));
+    const it = A && A.items.find(x => norm((d.exercises.find(e => e.id === x.exId) || {}).name || '') === norm('Tractions pronation'));
+    if (it && !it.mode && it.sets === 4 && it.target === '4–5') it.target = '4–6';
+  }
+  d.v = 6;
   return d;
 }
 
@@ -627,7 +633,7 @@ function suggestFor(exId, sets) {
   }
   const work = sets.filter(s => s.w === top).slice(0, it.sets);
   if (work.length < it.sets || work.some(s => s.r < range.hi)) return null;
-  if (top === 0) return { w: 0, r: range.hi + 1, text: `${work.length} × ${range.hi}+ réussi au poids du corps → vise ${range.hi + 1} reps ou ajoute du lest.` };
+  if (top === 0) return { w: 0, r: range.hi + 1, text: `${work.length} × ${range.hi}+ réussi au poids du corps → ajoute du lest (+2,5 kg) et repars à ${range.lo} reps, ou vise ${range.hi + 1} reps sans lest.` };
   const w = round2(top + db.settings.step);
   return { w, r: range.lo, text: `${work.length} × ${range.hi}+ réussi à ${fmtNum(top)} kg → passe à ${fmtNum(w)} kg (vise ${range.lo} reps).` };
 }
