@@ -409,8 +409,8 @@ const SEED_PROGRAMS = [
     note: 'Échauffement : 5–8 min d’échauffement général et quelques mouvements de jambes sans charge avant la presse.',
     items: [
       ['Presse à cuisses', 3, '8–12', '2 min'],
-      ['Leg curl assis', 3, '10–12', '90 s'],
       ['Fentes arrière', 2, '8 par jambe', '90 s'],
+      ['Leg curl assis', 3, '10–12', '90 s'],
       ['Mollets', 2, '15–20', '60 s'],
       ['Course sur tapis', 1, '20 min', '', 'min', 'Allure facile : tu dois pouvoir parler. Alterne course et marche si nécessaire.'],
       ['Gainage', 3, '30–45 s', '60 s', 's']
@@ -457,7 +457,19 @@ function migrate(d) {
   if (!Array.isArray(d.jokersUsed)) d.jokersUsed = [];
   if (!d.profile || typeof d.profile !== 'object') d.profile = {};
   if (d.active && (Date.now() - d.active.start > 12 * 3600e3 || !d.programs.some(p => p.id === d.active.progId))) d.active = null;
-  d.v = 2;
+  if ((d.v || 1) < 3) {
+    // Séance B : les fentes (polyarticulaire) passent avant le leg curl (isolation),
+    // sauf si l'utilisateur a déjà changé l'ordre lui-même
+    const name = id => norm((d.exercises.find(e => e.id === id) || {}).name || '');
+    for (const p of d.programs) {
+      const i = p.items.findIndex(it => name(it.exId) === norm('Leg curl assis'));
+      if (i >= 0 && p.items[i + 1] && name(p.items[i + 1].exId) === norm('Fentes arrière')) {
+        [p.items[i], p.items[i + 1]] = [p.items[i + 1], p.items[i]];
+      }
+    }
+  }
+  d.settings = Object.assign({ sound: true }, d.settings);
+  d.v = 3;
   return d;
 }
 
@@ -1614,6 +1626,11 @@ function viewSettings() {
     <div class="card">
       <div class="small muted" style="margin-bottom:8px">Pas des boutons − / + pour le poids</div>
       <div class="seg">${steps.map(s => `<button data-act="step" data-v="${s}" aria-pressed="${db.settings.step === s}">${fmtNum(s)}</button>`).join('')}</div>
+      <div class="small muted" style="margin:14px 0 8px">🔔 Bip à la fin du repos (programmes)</div>
+      <div class="seg">
+        <button data-act="sound" data-v="1" aria-pressed="${!!db.settings.sound}">Activé</button>
+        <button data-act="sound" data-v="0" aria-pressed="${!db.settings.sound}">Désactivé</button>
+      </div>
     </div>
 
     <div class="section-title">Sauvegarde</div>
@@ -1693,7 +1710,10 @@ function updateTimer() {
     el.textContent = '✅ Go ! +' + mmss(sec - rest);
     if (ui.alerted !== last.id) {
       ui.alerted = last.id;
-      if (sec - rest < 5) vibrate([300, 150, 300]);
+      if (sec - rest < 5) {
+        vibrate([300, 150, 300]);
+        if (db.settings.sound) beep(2);
+      }
     }
   } else {
     el.classList.remove('ready');
@@ -1807,7 +1827,7 @@ $('#app').addEventListener('click', e => {
       $('#r').value = ui.r; vibrate(10);
       break;
     }
-    case 'add': addSet(); break;
+    case 'add': unlockAudio(); addSet(); break;
     case 'cstart': startChrono(); break;
     case 'cstop': stopChrono(true); break;
     case 'ccancel': stopChrono(false); break;
@@ -1881,6 +1901,10 @@ $('#app').addEventListener('click', e => {
     }
     case 'idel': if (p) { p.items.splice(i, 1); save(); render(); } break;
     case 'step': db.settings.step = Number(t.dataset.v); save(); render(); break;
+    case 'sound':
+      db.settings.sound = t.dataset.v === '1'; save(); render();
+      if (db.settings.sound) { unlockAudio(); beep(2); }
+      break;
     case 'export': exportData(); break;
     case 'import': $('#importFile').click(); break;
     case 'rename': {
