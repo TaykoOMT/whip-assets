@@ -9,7 +9,7 @@ et garde tes données **sur ton téléphone** (rien n'est envoyé sur internet).
 - **Séance** : choisis un exercice (ou tape son nom pour en créer un), règle le poids et les
   répétitions avec les boutons − / +, puis « Ajouter la série ». Les valeurs de ta dernière
   séance sont pré-remplies et rappelées en haut de l'écran.
-- **Programmes** : tes séances toutes prêtes (A, B, C, et D1 footing / D2 fractionné en option). « Lancer la séance » te guide exercice par
+- **Programmes** : tes séances toutes prêtes (A, B, C — avec des dips buste penché pour le bas des pecs —, et D1 footing / D2 fractionné en option). « Lancer la séance » te guide exercice par
   exercice avec l'objectif (séries × répétitions, repos) : tu n'as qu'à valider le poids et les
   répétitions de chaque série, puis « Exercice suivant ». Les programmes se modifient
   (exercices, séries, objectif, repos, conseil) et tu peux en créer d'autres.

@@ -400,8 +400,8 @@ const SEED_PROGRAMS = [
       ['Tractions pronation', 4, '4–6', '2–3 min'],
       ['Développé incliné haltères', 3, '8–12', '90–120 s'],
       ['Rowing poulie basse', 3, '8–12', '90–120 s'],
+      ['Dips (buste penché)', 3, '6–10', '2 min', null, 'Buste penché d’environ 30° vers l’avant, coudes légèrement écartés : c’est ce qui cible le bas des pecs. Descends jusqu’à ce que les épaules arrivent au niveau des coudes. Douleur à l’avant de l’épaule → descends moins bas.'],
       ['Développé militaire haltères', 2, '8–12', '90 s'],
-      ['Pompes', 2, '15–25', '60–90 s'],
       ['Curl marteau', 2, '8–12', '60–90 s']
     ]
   },
@@ -425,7 +425,7 @@ const SEED_PROGRAMS = [
       ['Développé incliné haltères', 2, '8–12', '2 min'],
       ['Rowing poulie basse', 2, '10–12', '2 min'],
       ['Squats au poids du corps', 3, '15', '60–90 s'],
-      ['Pompes', 2, '15–20', '60–90 s'],
+      ['Dips (buste penché)', 3, '8–12', '90 s', null, 'Buste penché d’environ 30° vers l’avant, coudes légèrement écartés : c’est ce qui cible le bas des pecs. Descends jusqu’à ce que les épaules arrivent au niveau des coudes. Douleur à l’avant de l’épaule → descends moins bas.'],
       ['Killy contre un mur', 3, '30–40 s', '60–90 s', 's'],
       ['Gainage', 2, '30–45 s', '60–90 s', 's']
     ]
@@ -508,7 +508,25 @@ function migrate(d) {
     const it = A && A.items.find(x => norm((d.exercises.find(e => e.id === x.exId) || {}).name || '') === norm('Tractions pronation'));
     if (it && !it.mode && it.sets === 4 && it.target === '4–5') it.target = '4–6';
   }
-  d.v = 6;
+  if ((d.v || 1) < 7) {
+    // Point faible bas des pecs : les pompes laissent la place aux dips buste penché.
+    // Séance A : dips 3 × 6–10 avant le développé militaire. Séance C : dips 3 × 8–12 à la place des pompes.
+    const exName = id => norm((d.exercises.find(e => e.id === id) || {}).name || '');
+    const dips = findOrCreateEx(d, 'Dips (buste penché)');
+    const swap = (progName, pompesTarget, dipsTarget, rest, beforeName) => {
+      const P = d.programs.find(p => norm(p.name) === norm(progName));
+      if (!P || P.items.some(it => it.exId === dips.id)) return;
+      const i = P.items.findIndex(it => exName(it.exId) === norm('Pompes') && !it.mode && it.target === pompesTarget);
+      if (i < 0) return;
+      const item = { exId: dips.id, sets: 3, target: dipsTarget, rest, tip: 'Buste penché d’environ 30° vers l’avant, coudes légèrement écartés : c’est ce qui cible le bas des pecs. Descends jusqu’à ce que les épaules arrivent au niveau des coudes. Douleur à l’avant de l’épaule → descends moins bas.' };
+      P.items.splice(i, 1);
+      const j = beforeName ? P.items.findIndex(it => exName(it.exId) === norm(beforeName)) : -1;
+      P.items.splice(j >= 0 ? j : i, 0, item);
+    };
+    swap('Séance A — Haut du corps', '15–25', '6–10', '2 min', 'Développé militaire haltères');
+    swap('Séance C — Corps entier et endurance', '15–20', '8–12', '90 s', null);
+  }
+  d.v = 7;
   return d;
 }
 
@@ -636,9 +654,9 @@ function suggestFor(exId, sets) {
   const work = sets.filter(s => s.w === top).slice(0, it.sets);
   if (work.length < it.sets || work.some(s => s.r < range.hi)) return null;
   if (top === 0) {
-    // Poids du corps en force (≤ 8 reps, ex. tractions 4–6) : on leste et on repart du bas de la fourchette.
+    // Poids du corps en force (≤ 10 reps, ex. tractions 4–6, dips 6–10) : on leste et on repart du bas de la fourchette.
     // En endurance (pompes 15–25…), on ajoute des répétitions.
-    if (range.hi <= 8) {
+    if (range.hi <= 10) {
       const lest = db.settings.step;
       return { w: lest, r: range.lo, text: `${work.length} × ${range.hi}+ réussi au poids du corps → leste-toi de ${fmtNum(lest)} kg et repars à ${range.lo} reps (déjà pré-rempli). Pas de lest ? Vise ${range.hi + 1} reps.` };
     }
